@@ -1,7 +1,7 @@
 {
   "manifest_schema_version": 3,
   "sdk_version": "5.9.6",
-  "app_id": "wp-site-connector",
+  "app_id": "wp-site-connector-extension",
   "version": "0.4.1",
   "name": "WP Site Connector",
   "description": "Connect WordPress sites by URL and Application Password and read their posts, pages, media, and health.",
@@ -3269,7 +3269,7 @@
   "signals": [],
   "schedules": [],
   "required_scopes": [],
-  "icon_size_bytes": 4608,
+  "icon_size_bytes": 682,
   "lifecycle": {
     "health_check": {
       "interval_sec": 60
