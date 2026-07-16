@@ -1,8 +1,10 @@
 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect x="1.5" y="2.5" width="17" height="15" rx="3" stroke="currentColor" stroke-width="1.6"/>
-<path d="M1.5 6.5H18.5" stroke="currentColor" stroke-width="1.6"/>
-<circle cx="4" cy="4.5" r="0.6" fill="currentColor"/>
-<circle cx="6" cy="4.5" r="0.6" fill="currentColor"/>
-<path d="M9.5 13.5L7.5 11.5L9.5 9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M12.5 9.5L14.5 11.5L12.5 13.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="1.5" y="3.5" width="17" height="13" rx="2.5" stroke="currentColor" stroke-width="1.6"/>
+<path d="M1.5 7H18.5" stroke="currentColor" stroke-width="1.6"/>
+<circle cx="4" cy="5.25" r="0.6" fill="currentColor"/>
+<circle cx="6" cy="5.25" r="0.6" fill="currentColor"/>
+<circle cx="8" cy="5.25" r="0.6" fill="currentColor"/>
+<path d="M7.5 13.5C6.5 13.5 5.5 12.5 5.5 11.5C5.5 10.5 6.5 9.5 7.5 9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M12.5 9.5C13.5 9.5 14.5 10.5 14.5 11.5C14.5 12.5 13.5 13.5 12.5 13.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M8.5 11.5H11.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
 </svg>
