@@ -1,5 +1,9 @@
 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-<circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.6"/>
-<path d="M2 10H18" stroke="currentColor" stroke-width="1.6"/>
-<path d="M10 2C12.7614 2 15 5.58172 15 10C15 14.4183 12.7614 18 10 18C7.23858 18 5 14.4183 5 10C5 5.58172 7.23858 2 10 2Z" stroke="currentColor" stroke-width="1.6"/>
+<path d="M8.31 8.44L4.97 5.36" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M11.69 8.44L15.03 5.36" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M10 12.3V15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+<circle cx="10" cy="10" r="2.3" stroke="currentColor" stroke-width="1.6"/>
+<circle cx="3.5" cy="4" r="2" stroke="currentColor" stroke-width="1.6"/>
+<circle cx="16.5" cy="4" r="2" stroke="currentColor" stroke-width="1.6"/>
+<circle cx="10" cy="17" r="2" stroke="currentColor" stroke-width="1.6"/>
 </svg>
