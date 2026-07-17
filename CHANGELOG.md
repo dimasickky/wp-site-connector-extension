@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.2 — 2026-07-18 — Fix: field help text was invisible (hover-only tooltip)
+
+### Fixed
+- **All connect-form field hints are now always-visible captions, not hover tooltips.**
+  `_field()` wrapped every help string in a `ui.Tooltip` attached to the label, so
+  guidance like "leave empty if using a private key above" for the Private Key /
+  SSH Password pair only appeared on mouse hover over the label text — easy to miss
+  entirely, and unreachable on touch devices. Replaced with a `ui.Text(variant="caption")`
+  line rendered directly under each field, always visible.
+
 ## v0.6.1 — 2026-07-17 — Maintenance: rebuild against imperal-sdk==5.9.9
 
 ### Changed

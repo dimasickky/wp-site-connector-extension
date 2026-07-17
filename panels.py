@@ -135,8 +135,9 @@ async def center(ctx, view="", site_id="",
 
 def _field(label, help_text, input_node):
     return ui.Stack(children=[
-        ui.Tooltip(content=help_text, children=ui.Text(label)),
+        ui.Text(label),
         input_node,
+        ui.Text(help_text, variant="caption"),
     ])
 
 
