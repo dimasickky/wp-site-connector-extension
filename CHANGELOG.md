@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.1 — 2026-07-17 — Maintenance: rebuild against imperal-sdk==5.9.9
+
+### Changed
+- Maintenance release — rebuilt against `imperal-sdk==5.9.9` (picks up upstream
+  5.9.7 structured error codes, 5.9.8 provider tool-name length check, 5.9.9
+  declared-capabilities check). No functional changes; `imperal validate`
+  reports 0 errors / 0 warnings against the new SDK.
+
 ## v0.6.0 — 2026-07-17 — Declared capabilities + richer connected-sites context
 
 ### Added
