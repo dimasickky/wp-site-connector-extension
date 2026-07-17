@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.6.4 — 2026-07-18 — Fix: SSH-only sites couldn't read content, only publish to it
+
+### Fixed
+- An SSH-only connected site (no Application Password at all) could
+  `create_post`/`update_post`/`upload_media` via WP-CLI, but every read
+  function (`list_posts`, `list_pages`, `list_media`, `list_comments`,
+  `list_scheduled`, `list_users`, `list_orders`, `list_custom_posts`,
+  `get_site_health`, `refresh_site`, `refresh_all_sites`) hard-required a
+  stored REST credential and failed with "Stored credential is missing —
+  reconnect the site" — silently defeating the point of an SSH-only
+  connection for anything except publishing.
+- All read functions now resolve auth mode the same way the publish
+  functions already did (`storage.resolve_site`), and branch to new
+  read-only WP-CLI helpers (`wp_cli.list_content_cli`, `list_comments_cli`,
+  `list_users_cli`, `list_orders_cli`, `count_posts_cli`) when the site is
+  SSH-only — no REST call is attempted for those sites at all.
+- Deduplicated `_authed`/`_resolve_site` (previously defined separately in
+  both `handlers_publish.py` and `handlers_read.py`) into one shared
+  `storage.resolve_site`.
+
 ## v0.6.3 — 2026-07-18 — Fix: pasted SSH private key rejected with opaque libcrypto error
 
 ### Fixed

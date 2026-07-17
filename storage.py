@@ -161,3 +161,27 @@ async def clear_content_cache(ctx, site_id):
     doc = await _find_doc(ctx, CACHE_COLLECTION, site_id)
     if doc:
         await ctx.store.delete(CACHE_COLLECTION, doc.id)
+
+
+# ── Auth resolution (shared by publish + read handlers) ────────────────────────
+
+async def resolve_site(ctx, site_id):
+    """Look up a site and decide which client to read/publish through.
+
+    Returns (mode, session, error) where mode is 'rest' (session =
+    (base_url, username, password)) or 'ssh' (session = the decrypted SSH
+    credential dict for wp_cli). A site connected via connect_site_ssh has
+    no Application Password at all, so REST is never attempted for it.
+    """
+    record = await get_site_record(ctx, site_id)
+    if not record:
+        return None, None, "No connected site with that id."
+    if record.get("auth_mode") == "ssh":
+        cred = await get_ssh_cred(ctx, site_id)
+        if not cred:
+            return None, None, "Stored SSH credential is missing — reconnect the site."
+        return "ssh", cred, None
+    pw = await get_credential(ctx, site_id)
+    if not pw:
+        return None, None, "Stored credential is missing — reconnect the site."
+    return "rest", (record["url"], record.get("username", ""), pw), None

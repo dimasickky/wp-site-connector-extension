@@ -11,37 +11,10 @@ import wp_cli
 _VALID_STATUSES = {"draft", "publish", "pending", "future"}
 
 
-async def _authed(ctx, site_id):
-    """REST auth path (Application Password). Returns ((base_url, username, password), None) or (None, error)."""
-    record = await storage.get_site_record(ctx, site_id)
-    if not record:
-        return None, "No connected site with that id."
-    pw = await storage.get_credential(ctx, site_id)
-    if not pw:
-        return None, "Stored credential is missing — reconnect the site."
-    return (record["url"], record["username"], pw), None
-
-
-async def _resolve_site(ctx, site_id):
-    """Look up a site and decide which client to publish/read through.
-
-    Returns (mode, session, error) where mode is 'rest' (session =
-    (base_url, username, password)) or 'ssh' (session = the decrypted SSH
-    credential dict for wp_cli). A site connected via connect_site_ssh has
-    no Application Password at all, so REST is never attempted for it.
-    """
-    record = await storage.get_site_record(ctx, site_id)
-    if not record:
-        return None, None, "No connected site with that id."
-    if record.get("auth_mode") == "ssh":
-        cred = await storage.get_ssh_cred(ctx, site_id)
-        if not cred:
-            return None, None, "Stored SSH credential is missing — reconnect the site."
-        return "ssh", cred, None
-    pw = await storage.get_credential(ctx, site_id)
-    if not pw:
-        return None, None, "Stored credential is missing — reconnect the site."
-    return "rest", (record["url"], record.get("username", ""), pw), None
+# NOTE: site auth resolution (REST vs SSH) lives in storage.resolve_site —
+# shared with handlers_read.py so both publish and read paths pick the same
+# way to reach an SSH-only site.
+_resolve_site = storage.resolve_site
 
 
 @chat.function(

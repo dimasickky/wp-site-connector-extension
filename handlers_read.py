@@ -25,21 +25,28 @@ async def list_sites(ctx, params: _NoParams) -> ActionResult:
     return ActionResult.success(sdl.EntityList[Site](items=sites), summary=f"{len(sites)} site(s) connected")
 
 
-async def _authed(ctx, site_id):
-    record = await storage.get_site_record(ctx, site_id)
-    if not record:
-        return None, "No connected site with that id."
-    pw = await storage.get_credential(ctx, site_id)
-    if not pw:
-        return None, "Stored credential is missing — reconnect the site."
-    return (record["url"], record["username"], pw), None
+# NOTE: site auth resolution (REST vs SSH) lives in storage.resolve_site —
+# shared with handlers_publish.py so both publish and read paths pick the
+# same way to reach an SSH-only site (no Application Password stored at all).
+_resolve_site = storage.resolve_site
 
 
 async def _fetch(ctx, site_id, path, params):
-    auth, err = await _authed(ctx, site_id)
+    """REST-only fetch helper — used when the site resolves to 'rest' mode.
+
+    Callers that also have an SSH-capable equivalent branch on mode via
+    _resolve_site() first; this stays REST-only intentionally.
+    """
+    mode, session, err = await _resolve_site(ctx, site_id)
     if err:
         return None, ActionResult.error(err, retryable=False)
-    base_url, username, pw = auth
+    if mode == "ssh":
+        return None, ActionResult.error(
+            "This site is connected via SSH only (no REST/Application Password) — "
+            "internal routing error, this path should have used the WP-CLI branch.",
+            retryable=False,
+        )
+    base_url, username, pw = session
     try:
         r = await wp_get(ctx, base_url, path, username=username, app_password=pw, params=params)
     except Exception as e:
@@ -53,16 +60,71 @@ async def _fetch(ctx, site_id, path, params):
     return (r.body if isinstance(r.body, list) else []), None
 
 
+# ── WP-CLI (SSH) → REST-shaped dict adapters ──────────────────────────────────
+# `wp post/comment/user list --format=json` returns WordPress's raw column
+# names (ID, post_title, comment_ID, ...) — these adapters reshape that into
+# the same field names the REST-branch converters below already expect, so
+# every @chat.function has ONE conversion step regardless of which mode ran.
+
+def _cli_post_to_rest_shape(p: dict) -> dict:
+    return {"id": p.get("ID", ""), "title": {"rendered": p.get("post_title", "")},
+            "status": p.get("post_status", ""), "link": p.get("guid", ""),
+            "date": p.get("post_date")}
+
+
+def _cli_media_to_rest_shape(p: dict) -> dict:
+    return {"id": p.get("ID", ""), "title": {"rendered": p.get("post_title", "")},
+            "source_url": p.get("guid", ""), "mime_type": p.get("post_mime_type", "")}
+
+
+_CLI_COMMENT_STATUS = {"1": "approved", "0": "hold", "spam": "spam", "trash": "trash"}
+
+
+def _cli_comment_to_rest_shape(c: dict) -> dict:
+    raw_status = c.get("comment_approved", "")
+    return {"id": c.get("comment_ID", ""), "author_name": c.get("comment_author", "Anonymous"),
+            "status": _CLI_COMMENT_STATUS.get(raw_status, raw_status),
+            "content": {"rendered": c.get("comment_content", "")},
+            "post": c.get("comment_post_ID", ""), "date": c.get("comment_date", "")}
+
+
+def _cli_user_to_rest_shape(u: dict) -> dict:
+    roles = u.get("roles", "")
+    return {"id": u.get("ID", ""), "name": u.get("display_name", "") or u.get("user_login", ""),
+            "roles": [r.strip() for r in roles.split(",")] if roles else [],
+            "registered_date": u.get("user_registered", "")}
+
+
+def _cli_order_to_rest_shape(o: dict) -> dict:
+    return {"id": o.get("id", ""), "status": o.get("status", ""),
+            "total": o.get("total", ""), "currency": o.get("currency", "")}
+
+
+# REST status filter -> WP-CLI's own vocabulary (WP-CLI uses "approve", not "approved").
+_REST_TO_CLI_COMMENT_STATUS = {"approved": "approve", "hold": "hold", "spam": "spam", "all": "all"}
+
+
 @chat.function("list_posts", description="List recent posts on a connected WordPress site.",
                action_type="read", data_model=sdl.EntityList[Post])
 async def list_posts(ctx, params: ListContentParams) -> ActionResult:
-    """Return recent posts from the site's REST API as an entity list."""
-    q = {"per_page": params.limit}
-    if params.search:
-        q["search"] = params.search
-    data, err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/posts", q)
+    """Return recent posts — via REST for Application Password sites, or via
+    `wp post list` over SSH (no REST call at all) for SSH-only sites."""
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return err
+        return ActionResult.error(err, retryable=False)
+    if mode == "ssh":
+        rows, cli_err = await wp_cli.list_content_cli(session, post_type="post",
+                                                       limit=params.limit, search=params.search)
+        if cli_err:
+            return ActionResult.error(cli_err, retryable=True)
+        data = [_cli_post_to_rest_shape(p) for p in rows]
+    else:
+        q = {"per_page": params.limit}
+        if params.search:
+            q["search"] = params.search
+        data, fetch_err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/posts", q)
+        if fetch_err:
+            return fetch_err
     items = [Post(id=str(p["id"]), title=wp_title(p), kind="wp_post",
                   status=p.get("status", ""), link=p.get("link", ""), date=p.get("date")) for p in data]
     return ActionResult.success(sdl.EntityList[Post](items=items), summary=f"{len(items)} post(s)")
@@ -71,13 +133,24 @@ async def list_posts(ctx, params: ListContentParams) -> ActionResult:
 @chat.function("list_pages", description="List pages on a connected WordPress site.",
                action_type="read", data_model=sdl.EntityList[Page])
 async def list_pages(ctx, params: ListContentParams) -> ActionResult:
-    """Return pages from the site's REST API as an entity list."""
-    q = {"per_page": params.limit}
-    if params.search:
-        q["search"] = params.search
-    data, err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/pages", q)
+    """Return pages — via REST for Application Password sites, or via
+    `wp post list --post_type=page` over SSH for SSH-only sites."""
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return err
+        return ActionResult.error(err, retryable=False)
+    if mode == "ssh":
+        rows, cli_err = await wp_cli.list_content_cli(session, post_type="page",
+                                                       limit=params.limit, search=params.search)
+        if cli_err:
+            return ActionResult.error(cli_err, retryable=True)
+        data = [_cli_post_to_rest_shape(p) for p in rows]
+    else:
+        q = {"per_page": params.limit}
+        if params.search:
+            q["search"] = params.search
+        data, fetch_err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/pages", q)
+        if fetch_err:
+            return fetch_err
     items = [Page(id=str(p["id"]), title=wp_title(p), kind="wp_page",
                   status=p.get("status", ""), link=p.get("link", ""), date=p.get("date")) for p in data]
     return ActionResult.success(sdl.EntityList[Page](items=items), summary=f"{len(items)} page(s)")
@@ -86,10 +159,20 @@ async def list_pages(ctx, params: ListContentParams) -> ActionResult:
 @chat.function("list_media", description="List media library items on a connected WordPress site.",
                action_type="read", data_model=sdl.EntityList[MediaItem])
 async def list_media(ctx, params: ListMediaParams) -> ActionResult:
-    """Return media items from the site's REST API as an entity list."""
-    data, err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/media", {"per_page": params.limit})
+    """Return media items — via REST for Application Password sites, or via
+    `wp post list --post_type=attachment` over SSH for SSH-only sites."""
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return err
+        return ActionResult.error(err, retryable=False)
+    if mode == "ssh":
+        rows, cli_err = await wp_cli.list_content_cli(session, post_type="attachment", limit=params.limit)
+        if cli_err:
+            return ActionResult.error(cli_err, retryable=True)
+        data = [_cli_media_to_rest_shape(p) for p in rows]
+    else:
+        data, fetch_err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/media", {"per_page": params.limit})
+        if fetch_err:
+            return fetch_err
     items = [MediaItem(id=str(m["id"]), title=wp_title(m), kind="wp_media",
                        url=m.get("source_url", ""), mime_type=m.get("mime_type", "")) for m in data]
     return ActionResult.success(sdl.EntityList[MediaItem](items=items), summary=f"{len(items)} media item(s)")
@@ -98,32 +181,46 @@ async def list_media(ctx, params: ListMediaParams) -> ActionResult:
 @chat.function("get_site_health", description="Report read-only health for a connected WordPress site.",
                action_type="read", data_model=SiteHealth)
 async def get_site_health(ctx, params: SiteIdParams) -> ActionResult:
-    """Report best-effort read-only health: reachability, auth, SSL, and content counts."""
-    auth, err = await _authed(ctx, params.site_id)
+    """Report best-effort read-only health: reachability, auth, SSL, and content counts —
+    via REST for Application Password sites, or via WP-CLI over SSH for SSH-only sites."""
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
         return ActionResult.error(err, retryable=False)
-    base_url, username, pw = auth
 
-    async def _call(path, per_page=1):
-        try:
-            return await wp_get(ctx, base_url, path, username=username, app_password=pw,
-                                params={"per_page": per_page})
-        except Exception:
-            return None
+    if mode == "ssh":
+        ok, msg, _ = await wp_cli.test_connection(session)
+        posts_n, _ = await wp_cli.count_posts_cli(session, "post") if ok else (0, None)
+        pages_n, _ = await wp_cli.count_posts_cli(session, "page") if ok else (0, None)
+        media_n, _ = await wp_cli.count_posts_cli(session, "attachment") if ok else (0, None)
+        record = await storage.get_site_record(ctx, params.site_id) or {}
+        base_url = record.get("url", "")
+        reachable = ok
+        auth_ok = ok
+        counts = {"posts": posts_n or 0, "pages": pages_n or 0, "media": media_n or 0}
+    else:
+        base_url, username, pw = session
 
-    me, posts_r, pages_r, media_r = await asyncio.gather(
-        _call("/wp-json/wp/v2/users/me"),
-        _call("/wp-json/wp/v2/posts", 100),
-        _call("/wp-json/wp/v2/pages", 100),
-        _call("/wp-json/wp/v2/media", 100),
-    )
+        async def _call(path, per_page=1):
+            try:
+                return await wp_get(ctx, base_url, path, username=username, app_password=pw,
+                                    params={"per_page": per_page})
+            except Exception:
+                return None
 
-    def _count(r):
-        return len(r.body) if r and r.status_code == 200 and isinstance(r.body, list) else 0
+        me, posts_r, pages_r, media_r = await asyncio.gather(
+            _call("/wp-json/wp/v2/users/me"),
+            _call("/wp-json/wp/v2/posts", 100),
+            _call("/wp-json/wp/v2/pages", 100),
+            _call("/wp-json/wp/v2/media", 100),
+        )
 
-    reachable = me is not None
-    auth_ok = me is not None and me.status_code == 200
-    counts = {"posts": _count(posts_r), "pages": _count(pages_r), "media": _count(media_r)}
+        def _count(r):
+            return len(r.body) if r and r.status_code == 200 and isinstance(r.body, list) else 0
+
+        reachable = me is not None
+        auth_ok = me is not None and me.status_code == 200
+        counts = {"posts": _count(posts_r), "pages": _count(pages_r), "media": _count(media_r)}
+
     health = SiteHealth(
         id=params.site_id, title=params.site_id, kind="wp_site_health",
         reachable=reachable, auth_ok=auth_ok, ssl_valid=base_url.startswith("https://"),
@@ -145,19 +242,28 @@ async def get_site_health(ctx, params: SiteIdParams) -> ActionResult:
     event="wp-site-connector.refresh_site",
 )
 async def refresh_site(ctx, params: SiteIdParams) -> ActionResult:
-    """Ping the site REST API, update stored status, and refresh the overview panel."""
-    auth, err = await _authed(ctx, params.site_id)
+    """Ping the site (REST or WP-CLI over SSH depending on how it's connected),
+    update stored status, and refresh the overview panel."""
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
         return ActionResult.error(err, retryable=False)
-    base_url, username, pw = auth
-    try:
-        r = await wp_get(ctx, base_url, "/wp-json/wp/v2/users/me",
-                         username=username, app_password=pw)
-    except Exception as e:
-        await ctx.log(f"refresh_site http error: {e}", level="error")
-        return ActionResult.error("Could not reach the site — try again.", retryable=True)
-    status = "connected" if 200 <= r.status_code < 300 else "error"
     record = await storage.get_site_record(ctx, params.site_id) or {}
+
+    if mode == "ssh":
+        ok, msg, _ = await wp_cli.test_connection(session)
+        status = "connected" if ok else "error"
+        base_url = record.get("url", "")
+        username = record.get("username", "")
+    else:
+        base_url, username, pw = session
+        try:
+            r = await wp_get(ctx, base_url, "/wp-json/wp/v2/users/me",
+                             username=username, app_password=pw)
+            status = "connected" if 200 <= r.status_code < 300 else "error"
+        except Exception as e:
+            await ctx.log(f"refresh_site http error: {e}", level="error")
+            return ActionResult.error("Could not reach the site — try again.", retryable=True)
+
     await storage.save_site_record(ctx, {**record, "status": status, "last_checked": now_iso()})
     await storage.clear_content_cache(ctx, params.site_id)
 
@@ -181,18 +287,22 @@ async def refresh_site(ctx, params: SiteIdParams) -> ActionResult:
     event="wp-site-connector.refresh_all_sites",
 )
 async def refresh_all_sites(ctx, params: _NoParams) -> ActionResult:
-    """Ping every connected site in parallel, update stored statuses, clear content caches."""
+    """Ping every connected site in parallel (REST or WP-CLI over SSH depending
+    on how each is connected), update stored statuses, clear content caches."""
     rows = await storage.list_site_records(ctx)
     if not rows:
         return ActionResult.error("No sites connected.", retryable=False)
 
     async def _check(record):
         site_id = record["id"]
-        auth, err = await _authed(ctx, site_id)
+        mode, session, err = await _resolve_site(ctx, site_id)
         if err:
             updated = {**record, "status": "error", "last_checked": now_iso()}
+        elif mode == "ssh":
+            ok, msg, _ = await wp_cli.test_connection(session)
+            updated = {**record, "status": "connected" if ok else "error", "last_checked": now_iso()}
         else:
-            base_url, username, pw = auth
+            base_url, username, pw = session
             try:
                 r = await wp_get(ctx, base_url, "/wp-json/wp/v2/users/me",
                                  username=username, app_password=pw)
@@ -226,13 +336,24 @@ async def refresh_all_sites(ctx, params: _NoParams) -> ActionResult:
     data_model=sdl.EntityList[Comment],
 )
 async def list_comments(ctx, params: ListCommentsParams) -> ActionResult:
-    """Return comments from the site's REST API."""
-    q: dict = {"per_page": params.limit, "orderby": "date", "order": "desc"}
-    if params.status != "all":
-        q["status"] = params.status
-    data, err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/comments", q)
+    """Return comments — via REST for Application Password sites, or via
+    `wp comment list` over SSH for SSH-only sites."""
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return err
+        return ActionResult.error(err, retryable=False)
+    if mode == "ssh":
+        cli_status = _REST_TO_CLI_COMMENT_STATUS.get(params.status, params.status)
+        rows, cli_err = await wp_cli.list_comments_cli(session, status=cli_status, limit=params.limit)
+        if cli_err:
+            return ActionResult.error(cli_err, retryable=True)
+        data = [_cli_comment_to_rest_shape(c) for c in rows]
+    else:
+        q: dict = {"per_page": params.limit, "orderby": "date", "order": "desc"}
+        if params.status != "all":
+            q["status"] = params.status
+        data, fetch_err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/comments", q)
+        if fetch_err:
+            return fetch_err
     items = [
         Comment(
             id=str(c["id"]),
@@ -261,13 +382,25 @@ async def list_comments(ctx, params: ListCommentsParams) -> ActionResult:
     data_model=sdl.EntityList[Post],
 )
 async def list_scheduled(ctx, params: ListContentParams) -> ActionResult:
-    """Return scheduled (future) posts from the site's REST API."""
-    q: dict = {"per_page": params.limit, "status": "future", "orderby": "date", "order": "asc"}
-    if params.search:
-        q["search"] = params.search
-    data, err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/posts", q)
+    """Return scheduled (future) posts — via REST for Application Password sites,
+    or via `wp post list --post_status=future` over SSH for SSH-only sites."""
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return err
+        return ActionResult.error(err, retryable=False)
+    if mode == "ssh":
+        rows, cli_err = await wp_cli.list_content_cli(session, post_type="post", limit=params.limit,
+                                                       search=params.search, status="future",
+                                                       orderby="date", order="asc")
+        if cli_err:
+            return ActionResult.error(cli_err, retryable=True)
+        data = [_cli_post_to_rest_shape(p) for p in rows]
+    else:
+        q: dict = {"per_page": params.limit, "status": "future", "orderby": "date", "order": "asc"}
+        if params.search:
+            q["search"] = params.search
+        data, fetch_err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/posts", q)
+        if fetch_err:
+            return fetch_err
     items = [Post(id=str(p["id"]), title=wp_title(p), kind="wp_post",
                   status="scheduled", link=p.get("link", ""),
                   date=p.get("date", "")) for p in data]
@@ -282,13 +415,23 @@ async def list_scheduled(ctx, params: ListContentParams) -> ActionResult:
     data_model=sdl.EntityList[WPUser],
 )
 async def list_users(ctx, params: ListContentParams) -> ActionResult:
-    """Return users from the site's REST API ordered by registration date."""
-    q: dict = {"per_page": params.limit, "orderby": "registered_date", "order": "desc"}
-    if params.search:
-        q["search"] = params.search
-    data, err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/users", q)
+    """Return users — via REST for Application Password sites, or via
+    `wp user list` over SSH for SSH-only sites."""
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return err
+        return ActionResult.error(err, retryable=False)
+    if mode == "ssh":
+        rows, cli_err = await wp_cli.list_users_cli(session, limit=params.limit, search=params.search)
+        if cli_err:
+            return ActionResult.error(cli_err, retryable=True)
+        data = [_cli_user_to_rest_shape(u) for u in rows]
+    else:
+        q: dict = {"per_page": params.limit, "orderby": "registered_date", "order": "desc"}
+        if params.search:
+            q["search"] = params.search
+        data, fetch_err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/users", q)
+        if fetch_err:
+            return fetch_err
     items = [
         WPUser(
             id=str(u["id"]),
@@ -310,27 +453,35 @@ async def list_users(ctx, params: ListContentParams) -> ActionResult:
     data_model=sdl.EntityList[Order],
 )
 async def list_orders(ctx, params: ListMediaParams) -> ActionResult:
-    """Return WooCommerce orders from the site's REST API."""
-    auth, err = await _authed(ctx, params.site_id)
+    """Return WooCommerce orders — via REST for Application Password sites, or via
+    `wp wc shop_order list` over SSH for SSH-only sites."""
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
         return ActionResult.error(err, retryable=False)
-    base_url, username, pw = auth
-    try:
-        r = await wp_get(ctx, base_url, "/wp-json/wc/v3/orders",
-                         username=username, app_password=pw,
-                         params={"per_page": params.limit, "orderby": "date", "order": "desc"})
-    except Exception as e:
-        await ctx.log(f"list_orders http error: {e}", level="error")
-        return ActionResult.error("Could not reach the site.", retryable=True)
-    if r.status_code == 404:
-        return ActionResult.error("WooCommerce is not installed on this site.", retryable=False)
-    if r.status_code in (401, 403):
-        return ActionResult.error(
-            "WooCommerce requires additional permissions — ensure the Application Password user has shop manager or admin role.",
-            retryable=False,
-        )
-    if r.status_code != 200 or not isinstance(r.body, list):
-        return ActionResult.error(wp_error_message(r.status_code), retryable=r.status_code >= 500)
+    if mode == "ssh":
+        rows, cli_err = await wp_cli.list_orders_cli(session, limit=params.limit)
+        if cli_err:
+            return ActionResult.error(cli_err, retryable=False)
+        data = [_cli_order_to_rest_shape(o) for o in rows]
+    else:
+        base_url, username, pw = session
+        try:
+            r = await wp_get(ctx, base_url, "/wp-json/wc/v3/orders",
+                             username=username, app_password=pw,
+                             params={"per_page": params.limit, "orderby": "date", "order": "desc"})
+        except Exception as e:
+            await ctx.log(f"list_orders http error: {e}", level="error")
+            return ActionResult.error("Could not reach the site.", retryable=True)
+        if r.status_code == 404:
+            return ActionResult.error("WooCommerce is not installed on this site.", retryable=False)
+        if r.status_code in (401, 403):
+            return ActionResult.error(
+                "WooCommerce requires additional permissions — ensure the Application Password user has shop manager or admin role.",
+                retryable=False,
+            )
+        if r.status_code != 200 or not isinstance(r.body, list):
+            return ActionResult.error(wp_error_message(r.status_code), retryable=r.status_code >= 500)
+        data = r.body
     items = [
         Order(
             id=str(o["id"]),
@@ -340,7 +491,7 @@ async def list_orders(ctx, params: ListMediaParams) -> ActionResult:
             total=str(o.get("total", "")),
             currency=o.get("currency", ""),
         )
-        for o in r.body
+        for o in data
     ]
     return ActionResult.success(sdl.EntityList[Order](items=items),
                                 summary=f"{len(items)} order(s)")
@@ -353,13 +504,24 @@ async def list_orders(ctx, params: ListMediaParams) -> ActionResult:
     data_model=sdl.EntityList[Post],
 )
 async def list_custom_posts(ctx, params: ListCustomPostsParams) -> ActionResult:
-    """Return items of the given custom post type from the site's REST API."""
-    q: dict = {"per_page": params.limit, "orderby": "date", "order": "desc"}
-    if params.search:
-        q["search"] = params.search
-    data, err = await _fetch(ctx, params.site_id, f"/wp-json/wp/v2/{params.post_type}", q)
+    """Return items of the given custom post type — via REST for Application Password
+    sites, or via `wp post list --post_type=<type>` over SSH for SSH-only sites."""
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return err
+        return ActionResult.error(err, retryable=False)
+    if mode == "ssh":
+        rows, cli_err = await wp_cli.list_content_cli(session, post_type=params.post_type,
+                                                       limit=params.limit, search=params.search)
+        if cli_err:
+            return ActionResult.error(cli_err, retryable=True)
+        data = [_cli_post_to_rest_shape(p) for p in rows]
+    else:
+        q: dict = {"per_page": params.limit, "orderby": "date", "order": "desc"}
+        if params.search:
+            q["search"] = params.search
+        data, fetch_err = await _fetch(ctx, params.site_id, f"/wp-json/wp/v2/{params.post_type}", q)
+        if fetch_err:
+            return fetch_err
     items = [Post(id=str(p["id"]), title=wp_title(p), kind=f"wp_cpt_{params.post_type}",
                   status=p.get("status", ""), link=p.get("link", ""),
                   date=p.get("date", "")) for p in data]

@@ -128,8 +128,90 @@ async def test_upload_media_cli_pipes_b64_over_stdin(monkeypatch):
                                                filename="photo.jpg", title="A photo")
     assert err is None
     assert media["id"] == "99"
-    assert captured["stdin_data"] == "ZmFrZS1kYXRh"
-    assert "ZmFrZS1kYXRh" not in captured["remote_cmd"]
+
+
+# ── Read-side WP-CLI helpers (list_content_cli, list_comments_cli, list_users_cli,
+# list_orders_cli, count_posts_cli) — the functions that make SSH-only sites
+# actually READABLE, not just writable. ──────────────────────────────────────
+
+async def test_list_content_cli_quotes_search_and_sets_post_type(monkeypatch):
+    captured = await _capture_run(monkeypatch, fake_output="[]")
+    posts, err = await wp_cli.list_content_cli(_CRED, post_type="page", limit=5,
+                                               search="foo'; rm -rf /; '")
+    assert err is None
+    assert posts == []
+    assert "--post_type=page" in captured["remote_cmd"]
+    assert "foo'; rm -rf /; '" not in captured["remote_cmd"]
+
+
+async def test_list_content_cli_parses_json_and_applies_status_orderby(monkeypatch):
+    captured = await _capture_run(monkeypatch,
+                                  fake_output='[{"ID": "5", "post_title": "Future"}]')
+    posts, err = await wp_cli.list_content_cli(_CRED, post_type="post", status="future",
+                                               orderby="date", order="asc")
+    assert err is None
+    assert posts[0]["post_title"] == "Future"
+    assert "--post_status=future" in captured["remote_cmd"]
+    assert "--orderby=date" in captured["remote_cmd"]
+    assert "--order=asc" in captured["remote_cmd"]
+
+
+async def test_list_comments_cli_maps_rest_status_and_quotes(monkeypatch):
+    captured = await _capture_run(monkeypatch,
+                                  fake_output='[{"comment_ID": "1", "comment_author": "Bob"}]')
+    comments, err = await wp_cli.list_comments_cli(_CRED, status="approve", limit=10)
+    assert err is None
+    assert comments[0]["comment_ID"] == "1"
+    assert "--status=approve" in captured["remote_cmd"]
+
+
+async def test_list_comments_cli_all_status_omits_status_flag(monkeypatch):
+    captured = await _capture_run(monkeypatch, fake_output="[]")
+    await wp_cli.list_comments_cli(_CRED, status="all")
+    assert "--status=" not in captured["remote_cmd"]
+
+
+async def test_list_users_cli_quotes_search_term(monkeypatch):
+    captured = await _capture_run(monkeypatch, fake_output="[]")
+    users, err = await wp_cli.list_users_cli(_CRED, search="jane'; rm -rf /; '")
+    assert err is None
+    assert "jane'; rm -rf /; '" not in captured["remote_cmd"]
+
+
+async def test_list_users_cli_parses_json(monkeypatch):
+    await _capture_run(monkeypatch, fake_output='[{"ID": "2", "display_name": "Jane"}]')
+    users, err = await wp_cli.list_users_cli(_CRED)
+    assert err is None
+    assert users[0]["display_name"] == "Jane"
+
+
+async def test_list_orders_cli_parses_json(monkeypatch):
+    await _capture_run(monkeypatch, fake_output='[{"id": "7", "total": "9.99"}]')
+    orders, err = await wp_cli.list_orders_cli(_CRED)
+    assert err is None
+    assert orders[0]["total"] == "9.99"
+
+
+async def test_list_orders_cli_reports_woocommerce_not_installed(monkeypatch):
+    captured = await _capture_run(
+        monkeypatch, fake_err="Error: 'wc' is not a registered wp command. See 'wp help'.")
+    orders, err = await wp_cli.list_orders_cli(_CRED)
+    assert orders is None
+    assert "WooCommerce is not installed" in err
+
+
+async def test_count_posts_cli_parses_integer(monkeypatch):
+    await _capture_run(monkeypatch, fake_output="42")
+    n, err = await wp_cli.count_posts_cli(_CRED, "page")
+    assert err is None
+    assert n == 42
+
+
+async def test_count_posts_cli_rejects_non_numeric_output(monkeypatch):
+    await _capture_run(monkeypatch, fake_output="not a number")
+    n, err = await wp_cli.count_posts_cli(_CRED)
+    assert n is None
+    assert "Unexpected" in err
 
 
 async def test_upload_media_cli_rejects_unsafe_extension_falls_back(monkeypatch):

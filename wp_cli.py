@@ -460,15 +460,30 @@ async def update_post_cli(cred: dict, post_id: str, title: str | None, content: 
     return {"id": str(post_id), "title": title, "status": status}, None
 
 
-async def list_posts_cli(cred: dict, limit: int = 20, search: str | None = None) -> tuple[list | None, str | None]:
-    """List posts via `wp post list --format=json` (read-only, no REST needed)."""
+async def list_content_cli(cred: dict, post_type: str = "post", limit: int = 20,
+                           search: str | None = None, status: str | None = None,
+                           orderby: str | None = None, order: str | None = None
+                           ) -> tuple[list | None, str | None]:
+    """Generic `wp post list --post_type=<type>` reader (read-only, no REST needed).
+
+    Powers list_posts_cli, and directly serves pages/scheduled posts/custom post
+    types/media (WordPress attachments ARE post_type='attachment' under the hood,
+    so the same command lists them) — one WP-CLI code path for every content type.
+    """
     sess, err = await _cli_session(cred)
     if err:
         return None, err
-    fields = "ID,post_title,post_status,post_date"
-    flags = [f"--posts_per_page={int(limit)}", f"--fields={fields}", "--format=json"]
+    fields = "ID,post_title,post_status,post_date,guid,post_mime_type"
+    flags = [f"--post_type={shlex.quote(post_type)}", f"--posts_per_page={int(limit)}",
+             f"--fields={fields}", "--format=json"]
     if search:
         flags.append(f"--s={shlex.quote(search)}")
+    if status:
+        flags.append(f"--post_status={shlex.quote(status)}")
+    if orderby:
+        flags.append(f"--orderby={shlex.quote(orderby)}")
+    if order:
+        flags.append(f"--order={shlex.quote(order)}")
     cmd = f"wp post list --path={sess['wp_path']} --allow-root " + " ".join(flags)
 
     async with (_key_file(sess["key"]) as kf,
@@ -483,6 +498,12 @@ async def list_posts_cli(cred: dict, limit: int = 20, search: str | None = None)
         return json.loads(out) if out.strip() else [], None
     except Exception:
         return None, f"Unexpected wp-cli output: {out[:200]}"
+
+
+async def list_posts_cli(cred: dict, limit: int = 20, search: str | None = None) -> tuple[list | None, str | None]:
+    """List posts via `wp post list --format=json` (read-only, no REST needed)."""
+    return await list_content_cli(cred, post_type="post", limit=limit, search=search)
+
 
 
 _RANK_MATH_META_KEYS = {
@@ -578,3 +599,108 @@ async def upload_media_cli(cred: dict, b64_data: str, filename: str, title: str 
     if not media_id.isdigit():
         return None, f"Unexpected wp-cli output: {media_id[:200]}"
     return {"id": media_id, "title": title or filename}, None
+
+
+async def list_comments_cli(cred: dict, status: str = "hold", limit: int = 20
+                            ) -> tuple[list | None, str | None]:
+    """List comments via `wp comment list --format=json` (read-only, no REST needed)."""
+    sess, err = await _cli_session(cred)
+    if err:
+        return None, err
+    fields = "comment_ID,comment_author,comment_content,comment_post_ID,comment_date"
+    flags = [f"--number={int(limit)}", f"--fields={fields}", "--format=json"]
+    if status and status != "all":
+        flags.append(f"--status={shlex.quote(status)}")
+    cmd = f"wp comment list --path={sess['wp_path']} --allow-root " + " ".join(flags)
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass)
+    if out is None:
+        return None, run_err or "SSH connection failed"
+    try:
+        return json.loads(out) if out.strip() else [], None
+    except Exception:
+        return None, f"Unexpected wp-cli output: {out[:200]}"
+
+
+async def list_users_cli(cred: dict, limit: int = 20, search: str | None = None
+                         ) -> tuple[list | None, str | None]:
+    """List users via `wp user list --format=json` (read-only, no REST needed)."""
+    sess, err = await _cli_session(cred)
+    if err:
+        return None, err
+    fields = "ID,user_login,display_name,user_email,roles,user_registered"
+    flags = [f"--number={int(limit)}", f"--fields={fields}", "--format=json"]
+    if search:
+        flags.append(f"--search={shlex.quote('*' + search + '*')}")
+    cmd = f"wp user list --path={sess['wp_path']} --allow-root " + " ".join(flags)
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass)
+    if out is None:
+        return None, run_err or "SSH connection failed"
+    try:
+        return json.loads(out) if out.strip() else [], None
+    except Exception:
+        return None, f"Unexpected wp-cli output: {out[:200]}"
+
+
+async def list_orders_cli(cred: dict, limit: int = 20) -> tuple[list | None, str | None]:
+    """List WooCommerce orders via `wp wc shop_order list --format=json` (read-only).
+
+    Returns an explicit "WooCommerce is not installed" error (rather than a
+    generic wp-cli failure) when the `wc` sub-command itself doesn't exist,
+    matching the REST path's dedicated not-installed message.
+    """
+    sess, err = await _cli_session(cred)
+    if err:
+        return None, err
+    fields = "id,status,total,currency,date_created,customer_id"
+    flags = [f"--per_page={int(limit)}", f"--fields={fields}", "--format=json"]
+    cmd = f"wp wc shop_order list --user=1 --path={sess['wp_path']} --allow-root " + " ".join(flags)
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass)
+    if out is None:
+        low = (run_err or "").lower()
+        if "not a registered wp command" in low or "'wc' is not a registered" in low:
+            return None, "WooCommerce is not installed on this site."
+        return None, run_err or "SSH connection failed"
+    try:
+        return json.loads(out) if out.strip() else [], None
+    except Exception:
+        return None, f"Unexpected wp-cli output: {out[:200]}"
+
+
+async def count_posts_cli(cred: dict, post_type: str = "post") -> tuple[int | None, str | None]:
+    """Count posts of a given type via `wp post list --format=count` (used by site health)."""
+    sess, err = await _cli_session(cred)
+    if err:
+        return None, err
+    cmd = (f"wp post list --post_type={shlex.quote(post_type)} --format=count "
+           f"--path={sess['wp_path']} --allow-root")
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass)
+    if out is None:
+        return None, run_err or "SSH connection failed"
+    stripped = out.strip()
+    if not stripped.isdigit():
+        return None, f"Unexpected wp-cli output: {stripped[:200]}"
+    return int(stripped), None
