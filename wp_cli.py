@@ -344,7 +344,8 @@ async def _cli_session(cred: dict):
 
 
 async def create_post_cli(cred: dict, title: str, content: str, status: str,
-                          excerpt: str = "", date: str | None = None) -> tuple[dict | None, str | None]:
+                          excerpt: str = "", date: str | None = None,
+                          slug: str | None = None) -> tuple[dict | None, str | None]:
     """Create a post via `wp post create -` (content piped over STDIN). Returns (post, error)."""
     sess, err = await _cli_session(cred)
     if err:
@@ -354,6 +355,8 @@ async def create_post_cli(cred: dict, title: str, content: str, status: str,
         flags.append(f"--post_excerpt={shlex.quote(excerpt)}")
     if date:
         flags.append(f"--post_date={shlex.quote(date)}")
+    if slug:
+        flags.append(f"--post_name={shlex.quote(slug)}")
     cmd = f"wp post create - --path={sess['wp_path']} --allow-root " + " ".join(flags)
 
     async with (_key_file(sess["key"]) as kf,
@@ -371,7 +374,8 @@ async def create_post_cli(cred: dict, title: str, content: str, status: str,
 
 
 async def update_post_cli(cred: dict, post_id: str, title: str | None, content: str | None,
-                          status: str | None, excerpt: str | None = None) -> tuple[dict | None, str | None]:
+                          status: str | None, excerpt: str | None = None,
+                          slug: str | None = None) -> tuple[dict | None, str | None]:
     """Update a post via `wp post update <id> -` (content piped over STDIN when given)."""
     sess, err = await _cli_session(cred)
     if err:
@@ -385,6 +389,8 @@ async def update_post_cli(cred: dict, post_id: str, title: str | None, content: 
         flags.append(f"--post_status={shlex.quote(status)}")
     if excerpt is not None:
         flags.append(f"--post_excerpt={shlex.quote(excerpt)}")
+    if slug is not None:
+        flags.append(f"--post_name={shlex.quote(slug)}")
     stdin_data = None
     content_flag = ""
     if content is not None:

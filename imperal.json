@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.6",
   "app_id": "wp-site-connector-extension",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "name": "WP Site Connector",
   "description": "Connect WordPress sites by URL and Application Password and read their posts, pages, media, and health.",
   "icon": "icon.svg",
@@ -2978,6 +2978,19 @@
             "description": "ISO 8601 datetime for scheduled publication — required when status='future'",
             "title": "Date"
           },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Custom URL slug (e.g. 'infinityfree-review-2026' to publish at https://site.com/infinityfree-review-2026/). Omit to let WordPress auto-generate one from the title.",
+            "title": "Slug"
+          },
           "categories": {
             "description": "Optional WordPress category IDs",
             "items": {
@@ -3202,6 +3215,19 @@
             "default": null,
             "description": "New ISO 8601 scheduled datetime — omit to leave unchanged",
             "title": "Date"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New custom URL slug — omit to leave unchanged",
+            "title": "Slug"
           },
           "featured_media_id": {
             "anyOf": [

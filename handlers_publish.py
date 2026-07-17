@@ -73,7 +73,7 @@ async def create_post(ctx, params: CreatePostParams) -> ActionResult:
     if mode == "ssh":
         result, cli_err = await wp_cli.create_post_cli(
             session, title=params.title, content=params.content, status=params.status,
-            excerpt=params.excerpt, date=params.date)
+            excerpt=params.excerpt, date=params.date, slug=params.slug)
         if cli_err:
             return ActionResult.error(f"WP-CLI publish failed: {cli_err}", retryable=True)
         post = Post(id=result["id"], title=result["title"], kind="wp_post",
@@ -92,6 +92,8 @@ async def create_post(ctx, params: CreatePostParams) -> ActionResult:
     }
     if params.date:
         body["date"] = params.date
+    if params.slug:
+        body["slug"] = params.slug
     if params.categories:
         body["categories"] = params.categories
     if params.tags:
@@ -143,13 +145,14 @@ async def update_post(ctx, params: UpdatePostParams) -> ActionResult:
         return ActionResult.error(err, retryable=False)
 
     if mode == "ssh":
-        if params.title is None and params.content is None and params.status is None and params.excerpt is None:
+        if (params.title is None and params.content is None and params.status is None
+                and params.excerpt is None and params.slug is None):
             return ActionResult.error(
-                "No fields to update — pass at least one of title/content/status/excerpt.",
+                "No fields to update — pass at least one of title/content/status/excerpt/slug.",
                 retryable=False)
         result, cli_err = await wp_cli.update_post_cli(
             session, post_id=params.post_id, title=params.title, content=params.content,
-            status=params.status, excerpt=params.excerpt)
+            status=params.status, excerpt=params.excerpt, slug=params.slug)
         if cli_err:
             return ActionResult.error(f"WP-CLI update failed: {cli_err}", retryable=True)
         post = Post(id=result["id"], title=result["title"] or "", kind="wp_post",
@@ -169,11 +172,13 @@ async def update_post(ctx, params: UpdatePostParams) -> ActionResult:
         body["excerpt"] = params.excerpt
     if params.date is not None:
         body["date"] = params.date
+    if params.slug is not None:
+        body["slug"] = params.slug
     if params.featured_media_id is not None:
         body["featured_media"] = params.featured_media_id
 
     if not body:
-        return ActionResult.error("No fields to update — pass at least one of title/content/status/excerpt/date/featured_media_id.",
+        return ActionResult.error("No fields to update — pass at least one of title/content/status/excerpt/date/slug/featured_media_id.",
                                   retryable=False)
 
     try:

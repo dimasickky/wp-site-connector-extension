@@ -72,6 +72,27 @@ async def test_update_post_cli_quotes_post_id_and_uses_stdin_for_content(monkeyp
     assert "$(content)" not in captured["remote_cmd"]
 
 
+async def test_create_post_cli_slug_becomes_post_name_flag(monkeypatch):
+    captured = await _capture_run(monkeypatch, fake_output="7")
+    await wp_cli.create_post_cli(_CRED, title="InfinityFree Review 2026", content="Body",
+                                 status="publish", slug="infinityfree-review-2026")
+    assert "--post_name=infinityfree-review-2026" in captured["remote_cmd"]
+
+
+async def test_create_post_cli_omits_post_name_flag_when_no_slug(monkeypatch):
+    captured = await _capture_run(monkeypatch, fake_output="7")
+    await wp_cli.create_post_cli(_CRED, title="Hi", content="Body", status="draft")
+    assert "--post_name" not in captured["remote_cmd"]
+
+
+async def test_update_post_cli_slug_becomes_post_name_flag_and_is_quoted(monkeypatch):
+    captured = await _capture_run(monkeypatch, fake_output="ok")
+    await wp_cli.update_post_cli(_CRED, post_id="7", title=None, content=None, status=None,
+                                 slug="new'; rm -rf /; 'slug")
+    assert "new'; rm -rf /; 'slug" not in captured["remote_cmd"]
+    assert "--post_name=" in captured["remote_cmd"]
+
+
 async def test_update_post_cli_rejects_non_numeric_post_id():
     post, err = await wp_cli.update_post_cli(_CRED, post_id="abc; rm -rf /", title="x",
                                              content=None, status=None)

@@ -68,6 +68,7 @@ class CreatePostParams(BaseModel):
     status: str = Field(default="draft", description="'draft', 'publish', 'pending', or 'future' (requires date)")
     excerpt: str = Field(default="", description="Optional short excerpt/summary")
     date: str | None = Field(default=None, description="ISO 8601 datetime for scheduled publication — required when status='future'")
+    slug: str | None = Field(default=None, description="Custom URL slug (e.g. 'infinityfree-review-2026' to publish at https://site.com/infinityfree-review-2026/). Omit to let WordPress auto-generate one from the title.")
     categories: list[int] = Field(default_factory=list, description="Optional WordPress category IDs")
     tags: list[int] = Field(default_factory=list, description="Optional WordPress tag IDs")
     featured_media_id: int | None = Field(default=None, description="Media library id to use as the featured image (cover) — get this from a prior upload_media call. This sets the post's cover, separate from any images embedded in content.")
@@ -81,6 +82,7 @@ class UpdatePostParams(BaseModel):
     status: str | None = Field(default=None, description="New status: 'draft', 'publish', 'pending', 'future' — omit to leave unchanged")
     excerpt: str | None = Field(default=None, description="New excerpt — omit to leave unchanged")
     date: str | None = Field(default=None, description="New ISO 8601 scheduled datetime — omit to leave unchanged")
+    slug: str | None = Field(default=None, description="New custom URL slug — omit to leave unchanged")
     featured_media_id: int | None = Field(default=None, description="New media library id for the featured image (cover) — omit to leave unchanged. Get this from a prior upload_media call.")
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.5.1 — 2026-07-17 — Custom post slug
+
+### Added
+- **`slug`** field on `create_post` and `update_post` — set a custom URL slug
+  (e.g. `slug="infinityfree-review-2026"` to publish at
+  `https://yoursite.com/infinityfree-review-2026/`) instead of letting
+  WordPress auto-derive one from the title. Works on both auth paths: sent
+  as the standard WP REST API `slug` field for Application-Password sites,
+  and as WP-CLI's `--post_name` flag (shell-quoted, same injection-safety
+  guarantees as every other interpolated field) for SSH-only sites.
+- Omit `slug` entirely to keep the previous default behaviour (WordPress
+  auto-generates one from the title).
+
+### Tests
+- +5 new tests covering slug on both REST and WP-CLI create/update paths,
+  including quoting safety for slugs containing shell metacharacters. Full
+  suite: **110/110 passing**. `imperal validate .`: 0 errors, 0 warnings.
+
+
 ## v0.5.0 — 2026-07-17 — Connect via SSH only (no Application Password)
 
 ### Added
