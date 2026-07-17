@@ -16,16 +16,61 @@ import contextlib
 _CMD_TIMEOUT = 30  # seconds per command
 
 
+def normalize_ssh_key(raw: str) -> tuple[str | None, str | None]:
+    """Best-effort repair + validation of a pasted SSH private key.
+
+    Pasting a multi-line PEM key into a chat/form field is the single most
+    common way this breaks: real line breaks get lost and the key arrives
+    as one line with literal backslash-n text, or with CRLF line endings,
+    or with stray trailing whitespace on each line — any of which makes
+    OpenSSL/libcrypto reject the file with an opaque "error in libcrypto"
+    rather than anything actionable.
+
+    Returns (normalized_key, error). ``error`` is a short, friendly message
+    when the input clearly isn't a usable PEM private key — meant to be
+    surfaced to the user BEFORE attempting an SSH connection, instead of
+    letting ssh fail 15+ seconds later with an unreadable libcrypto error.
+    """
+    if not raw or not raw.strip():
+        return None, "SSH private key is empty."
+    text = raw.strip()
+
+    # Literal "\n" text instead of real line breaks (classic form-paste bug).
+    if "\n" not in text and "\\n" in text:
+        text = text.replace("\\r\\n", "\n").replace("\\n", "\n")
+    # Normalize real CRLF/CR to LF.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    # Drop stray trailing whitespace per line, then ensure exactly one trailing newline.
+    text = "\n".join(line.rstrip() for line in text.split("\n")).strip() + "\n"
+
+    if "-----BEGIN" not in text or "PRIVATE KEY-----" not in text or "-----END" not in text:
+        return None, (
+            "That doesn't look like a valid private key — it's missing the "
+            "'-----BEGIN ... PRIVATE KEY-----' / '-----END ... PRIVATE KEY-----' lines, "
+            "or its line breaks were lost when it was pasted. Copy the exact contents of "
+            "your private key file (e.g. `cat ~/.ssh/id_ed25519`) and paste all of it, "
+            "including the BEGIN/END lines."
+        )
+    return text, None
+
+
 @contextlib.asynccontextmanager
 async def _key_file(key_content: str):
-    """Write a private key to a secure temp file; delete on exit."""
+    """Write a private key to a secure temp file; delete on exit.
+
+    Defensive normalization here too (not just at the handler entry point)
+    so a credential stored before this fix existed still self-heals on its
+    next use, instead of failing forever with the old opaque error.
+    """
     if not key_content:
         yield None
         return
+    normalized, err = normalize_ssh_key(key_content)
+    content_to_write = normalized if not err else key_content
     fd, path = tempfile.mkstemp(suffix=".key")
     try:
         with os.fdopen(fd, "w") as f:
-            f.write(key_content)
+            f.write(content_to_write)
         os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)  # 600 — ssh refuses world-readable keys
         yield path
     finally:
@@ -177,6 +222,11 @@ async def _run(host, port, user, key_path, remote_cmd, known_hosts_path=None,
         return None, ("SSH host key changed since it was first pinned — this can mean the server was "
                       "rebuilt, or it can indicate a man-in-the-middle attack. Verify out-of-band, then "
                       "remove and re-add SSH to re-pin the new key.")
+    if "error in libcrypto" in err_text.lower() or "load key" in err_text.lower():
+        return None, ("The SSH private key could not be read — it may be corrupted, encrypted with a "
+                      "passphrase (not supported), or in a format ssh doesn't recognise (e.g. a PuTTY "
+                      ".ppk file instead of OpenSSH/PEM). Re-copy the exact contents of the key file "
+                      "(including the BEGIN/END lines) and try again, or use an unencrypted key.")
     return None, err_text[:300]
 
 

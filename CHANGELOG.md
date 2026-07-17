@@ -1,6 +1,42 @@
 # Changelog
 
-## v0.6.2 — 2026-07-18 — Fix: field help text was invisible (hover-only tooltip)
+## v0.6.3 — 2026-07-18 — Fix: pasted SSH private key rejected with opaque libcrypto error
+
+### Fixed
+- **Pasting a multi-line private key into a form/chat field is the single
+  most common way SSH connect breaks**: the real line breaks between
+  `-----BEGIN ... KEY-----`, the base64 body, and `-----END ... KEY-----`
+  get lost in transit (collapsed into literal `\n` text, or turned into
+  CRLF, or padded with trailing whitespace per line) — and `ssh` then fails
+  15+ seconds later with an unreadable `Load key "...": error in libcrypto`
+  followed by `Permission denied (publickey,...)`, giving zero indication
+  the private key itself was the problem.
+- New `wp_cli.normalize_ssh_key()` repairs the common cases automatically
+  (literal `\n` → real line breaks, CRLF → LF, strips trailing whitespace
+  per line, collapses to exactly one trailing newline) and validates the
+  result actually has `-----BEGIN ... PRIVATE KEY-----` / `-----END ...
+  PRIVATE KEY-----` markers before anything is stored or an SSH connection
+  is attempted. `connect_site_ssh` and `add_ssh` now both call it and fail
+  **immediately**, with a plain-language message, instead of only finding
+  out after a full SSH round-trip.
+- If a key still fails at the actual `ssh` layer (encrypted with a
+  passphrase, wrong format like a PuTTY `.ppk`, or genuinely corrupted),
+  the raw libcrypto stderr is now replaced with a specific, actionable
+  message instead of being surfaced verbatim.
+
+### Security
+- The repaired/normalized key — never the raw pasted text — is what gets
+  encrypted and stored (`storage.set_ssh_cred`), so a credential saved
+  through this path is always in the clean form the `ssh` binary expects.
+
+### Tests
+- +9 new tests: `tests/test_ssh_key_normalization.py` (valid key passthrough,
+  literal-`\n` repair, CRLF repair, trailing-whitespace repair, empty input,
+  missing BEGIN/END rejected, whitespace-only rejected) and two new
+  `tests/test_connect_ssh.py` cases (mangled key rejected before any SSH
+  attempt is made; a repaired key is what's actually used and stored).
+  Full suite: **134/134 passing**. `imperal validate .`: 0 errors, 0 warnings.
+
 
 ### Fixed
 - **All connect-form field hints are now always-visible captions, not hover tooltips.**

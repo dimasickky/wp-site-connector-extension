@@ -77,7 +77,10 @@ async def connect_site_ssh(ctx, params: ConnectSiteSSHParams) -> ActionResult:
         "wp_path": params.wp_path,
     }
     if params.ssh_key:
-        cred["key"] = params.ssh_key
+        normalized_key, key_err = wp_cli.normalize_ssh_key(params.ssh_key)
+        if key_err:
+            return ActionResult.error(key_err, retryable=False)
+        cred["key"] = normalized_key
     else:
         cred["password"] = params.ssh_password
 
@@ -167,7 +170,10 @@ async def add_ssh(ctx, params: AddSSHParams) -> ActionResult:
         "wp_path": params.wp_path,
     }
     if params.ssh_key:
-        cred["key"] = params.ssh_key
+        normalized_key, key_err = wp_cli.normalize_ssh_key(params.ssh_key)
+        if key_err:
+            return ActionResult.error(key_err, retryable=False)
+        cred["key"] = normalized_key
     else:
         cred["password"] = params.ssh_password
 
