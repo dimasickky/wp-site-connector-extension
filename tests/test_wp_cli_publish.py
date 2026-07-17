@@ -145,3 +145,71 @@ async def test_upload_media_cli_rejects_non_numeric_output(monkeypatch):
     media, err = await wp_cli.upload_media_cli(_CRED, b64_data="ZGF0YQ==", filename="x.jpg")
     assert media is None
     assert "Unexpected" in err
+
+
+# ── Rank Math SEO meta (wp post meta update) ───────────────────────────────────
+
+async def test_set_post_meta_cli_uses_meta_update_command_and_stdin(monkeypatch):
+    captured = await _capture_run(monkeypatch, fake_output="Success: Updated custom field.")
+    ok, err = await wp_cli.set_post_meta_cli(_CRED, post_id="7", meta_key="rank_math_description",
+                                             meta_value="A great review with `backticks` and $(danger)")
+    assert err is None
+    assert ok is True
+    assert "wp post meta update" in captured["remote_cmd"]
+    assert "rank_math_description" in captured["remote_cmd"]
+    # Value never touches argv — it goes over STDIN, so shell metacharacters can't matter.
+    assert "backticks" not in captured["remote_cmd"]
+    assert "$(danger)" not in captured["remote_cmd"]
+    assert captured["stdin_data"] == "A great review with `backticks` and $(danger)"
+
+
+async def test_set_post_meta_cli_rejects_non_numeric_post_id():
+    ok, err = await wp_cli.set_post_meta_cli(_CRED, post_id="abc; rm -rf /",
+                                             meta_key="rank_math_description", meta_value="x")
+    assert ok is False
+    assert "numeric" in err
+
+
+async def test_set_post_meta_cli_surfaces_ssh_failure(monkeypatch):
+    await _capture_run(monkeypatch, fake_err="Connection refused")
+    ok, err = await wp_cli.set_post_meta_cli(_CRED, post_id="7", meta_key="rank_math_description",
+                                             meta_value="x")
+    assert ok is False
+    assert err == "Connection refused"
+
+
+async def test_set_rank_math_meta_cli_writes_both_fields(monkeypatch):
+    calls = []
+
+    async def _fake_set_meta(cred, post_id, meta_key, meta_value):
+        calls.append((post_id, meta_key, meta_value))
+        return True, None
+
+    monkeypatch.setattr(wp_cli, "set_post_meta_cli", _fake_set_meta)
+    errs = await wp_cli.set_rank_math_meta_cli(_CRED, post_id="7", description="desc here",
+                                               focus_keyword="my keyword")
+    assert errs == []
+    assert ("7", "rank_math_description", "desc here") in calls
+    assert ("7", "rank_math_focus_keyword", "my keyword") in calls
+
+
+async def test_set_rank_math_meta_cli_only_writes_given_fields(monkeypatch):
+    calls = []
+
+    async def _fake_set_meta(cred, post_id, meta_key, meta_value):
+        calls.append(meta_key)
+        return True, None
+
+    monkeypatch.setattr(wp_cli, "set_post_meta_cli", _fake_set_meta)
+    await wp_cli.set_rank_math_meta_cli(_CRED, post_id="7", description="only description")
+    assert calls == ["rank_math_description"]
+
+
+async def test_set_rank_math_meta_cli_collects_errors_per_field(monkeypatch):
+    async def _fake_set_meta(cred, post_id, meta_key, meta_value):
+        return False, f"failed for {meta_key}"
+
+    monkeypatch.setattr(wp_cli, "set_post_meta_cli", _fake_set_meta)
+    errs = await wp_cli.set_rank_math_meta_cli(_CRED, post_id="7", description="d",
+                                               focus_keyword="k")
+    assert len(errs) == 2

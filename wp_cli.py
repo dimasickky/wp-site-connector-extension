@@ -435,6 +435,60 @@ async def list_posts_cli(cred: dict, limit: int = 20, search: str | None = None)
         return None, f"Unexpected wp-cli output: {out[:200]}"
 
 
+_RANK_MATH_META_KEYS = {
+    "description": "rank_math_description",
+    "focus_keyword": "rank_math_focus_keyword",
+}
+
+
+async def set_post_meta_cli(cred: dict, post_id: str, meta_key: str, meta_value: str) -> tuple[bool, str | None]:
+    """Set one WordPress post-meta field via `wp post meta update <id> <key> -`.
+
+    meta_key is never attacker-controlled — callers pass one of a fixed,
+    hardcoded set (see set_rank_math_meta_cli), never a value derived from
+    user/article text. meta_value goes over STDIN like post content, so it
+    is never placed on the command line regardless of its contents.
+    """
+    sess, err = await _cli_session(cred)
+    if err:
+        return False, err
+    if not str(post_id).isdigit():
+        return False, "post_id must be a numeric WordPress post ID."
+    cmd = (f"wp post meta update {shlex.quote(str(post_id))} {shlex.quote(meta_key)} - "
+          f"--path={sess['wp_path']} --allow-root")
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass, stdin_data=meta_value)
+    if out is None:
+        return False, run_err or "SSH connection failed"
+    return True, None
+
+
+async def set_rank_math_meta_cli(cred: dict, post_id: str, description: str | None = None,
+                                 focus_keyword: str | None = None) -> list[str]:
+    """Write Rank Math SEO fields directly to wp_postmeta over SSH — the only reliable
+
+    way to set them, since Rank Math does not register these fields for the
+    WordPress REST API (show_in_rest is off by default; see Rank Math's own
+    support guidance). Returns a list of human-readable error strings for any
+    field that failed to write; empty list means everything succeeded.
+    """
+    errors = []
+    if description is not None:
+        ok, err = await set_post_meta_cli(cred, post_id, _RANK_MATH_META_KEYS["description"], description)
+        if not ok:
+            errors.append(f"meta description: {err}")
+    if focus_keyword is not None:
+        ok, err = await set_post_meta_cli(cred, post_id, _RANK_MATH_META_KEYS["focus_keyword"], focus_keyword)
+        if not ok:
+            errors.append(f"focus keyword: {err}")
+    return errors
+
+
 _SAFE_MEDIA_EXT = {"jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"}
 
 

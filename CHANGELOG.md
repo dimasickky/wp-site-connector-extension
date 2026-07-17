@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.5.2 — 2026-07-17 — Rank Math SEO meta (meta_description, focus_keyword)
+
+### Added
+- **`meta_description`** and **`focus_keyword`** fields on `create_post` and
+  `update_post` — write directly into Rank Math's own SEO fields
+  (`rank_math_description`, `rank_math_focus_keyword`) so the meta
+  description actually shows up in Google's search snippet and Rank Math's
+  on-page analysis picks up the right focus keyword.
+- **SSH-only, by design**: Rank Math does not register these fields for the
+  WordPress REST API (`show_in_rest` is off by default), so there is no
+  reliable way to set them over REST at all. On SSH-connected sites we write
+  them straight into `wp_postmeta` via `wp post meta update <id> <key> -`
+  (value piped over STDIN, key always one of a fixed hardcoded pair — never
+  attacker-controlled — same injection-safety pattern as every other WP-CLI
+  call in this extension).
+- On Application-Password/REST sites, passing `meta_description`/
+  `focus_keyword` now returns a **clear, honest message** explaining they
+  were not saved and why (rather than silently dropping them) — with a
+  pointer to connect over SSH instead.
+
+### Tests
+- +11 new tests: WP-CLI meta command construction/injection-safety, Rank
+  Math key mapping, REST-side honest-rejection message. Full suite:
+  **121/121 passing**. `imperal validate .`: 0 errors, 0 warnings.
+
+
 ## v0.5.1 — 2026-07-17 — Custom post slug
 
 ### Added

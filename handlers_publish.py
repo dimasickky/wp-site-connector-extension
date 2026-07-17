@@ -79,9 +79,15 @@ async def create_post(ctx, params: CreatePostParams) -> ActionResult:
         post = Post(id=result["id"], title=result["title"], kind="wp_post",
                     status=result["status"], link="", date=params.date)
         icon = "✅" if post.status == "publish" else "📝"
-        return ActionResult.success(
-            post, summary=f"{icon} Created \"{post.title}\" ({post.status}) via SSH",
-            refresh_panels=["center"])
+        summary = f"{icon} Created \"{post.title}\" ({post.status}) via SSH"
+        if params.meta_description is not None or params.focus_keyword is not None:
+            meta_errs = await wp_cli.set_rank_math_meta_cli(
+                session, post.id, description=params.meta_description, focus_keyword=params.focus_keyword)
+            if meta_errs:
+                summary += f" — ⚠️ Rank Math SEO fields NOT saved ({'; '.join(meta_errs)})"
+            else:
+                summary += " + Rank Math SEO fields set"
+        return ActionResult.success(post, summary=summary, refresh_panels=["center"])
 
     base_url, username, pw = session
     body = {
@@ -117,8 +123,13 @@ async def create_post(ctx, params: CreatePostParams) -> ActionResult:
                 status=data.get("status", params.status), link=data.get("link", ""),
                 date=data.get("date"))
     icon = "✅" if post.status == "publish" else "📝"
+    summary = f"{icon} Created \"{post.title}\" ({post.status})"
+    if params.meta_description is not None or params.focus_keyword is not None:
+        summary += (" — ⚠️ Rank Math SEO fields NOT saved: this site is connected via Application "
+                   "Password/REST, and Rank Math does not expose meta_description/focus_keyword to "
+                   "the REST API. Connect this site over SSH to set them.")
     return ActionResult.success(
-        post, summary=f"{icon} Created \"{post.title}\" ({post.status})",
+        post, summary=summary,
         refresh_panels=["center"],
     )
 
@@ -146,19 +157,33 @@ async def update_post(ctx, params: UpdatePostParams) -> ActionResult:
 
     if mode == "ssh":
         if (params.title is None and params.content is None and params.status is None
-                and params.excerpt is None and params.slug is None):
+                and params.excerpt is None and params.slug is None
+                and params.meta_description is None and params.focus_keyword is None):
             return ActionResult.error(
-                "No fields to update — pass at least one of title/content/status/excerpt/slug.",
+                "No fields to update — pass at least one of title/content/status/excerpt/slug/meta_description/focus_keyword.",
                 retryable=False)
-        result, cli_err = await wp_cli.update_post_cli(
-            session, post_id=params.post_id, title=params.title, content=params.content,
-            status=params.status, excerpt=params.excerpt, slug=params.slug)
-        if cli_err:
-            return ActionResult.error(f"WP-CLI update failed: {cli_err}", retryable=True)
-        post = Post(id=result["id"], title=result["title"] or "", kind="wp_post",
-                    status=result["status"] or "", link="", date=None)
-        return ActionResult.success(
-            post, summary=f"✅ Updated post {post.id} via SSH", refresh_panels=["center"])
+        summary = None
+        if (params.title is not None or params.content is not None or params.status is not None
+                or params.excerpt is not None or params.slug is not None):
+            result, cli_err = await wp_cli.update_post_cli(
+                session, post_id=params.post_id, title=params.title, content=params.content,
+                status=params.status, excerpt=params.excerpt, slug=params.slug)
+            if cli_err:
+                return ActionResult.error(f"WP-CLI update failed: {cli_err}", retryable=True)
+            summary = f"✅ Updated post {result['id']} via SSH"
+            post = Post(id=result["id"], title=result["title"] or "", kind="wp_post",
+                        status=result["status"] or "", link="", date=None)
+        else:
+            post = Post(id=params.post_id, title="", kind="wp_post", status="", link="", date=None)
+            summary = f"✅ Updated post {params.post_id} via SSH"
+        if params.meta_description is not None or params.focus_keyword is not None:
+            meta_errs = await wp_cli.set_rank_math_meta_cli(
+                session, params.post_id, description=params.meta_description, focus_keyword=params.focus_keyword)
+            if meta_errs:
+                summary += f" — ⚠️ Rank Math SEO fields NOT saved ({'; '.join(meta_errs)})"
+            else:
+                summary += " + Rank Math SEO fields set"
+        return ActionResult.success(post, summary=summary, refresh_panels=["center"])
 
     base_url, username, pw = session
     body = {}
@@ -178,6 +203,12 @@ async def update_post(ctx, params: UpdatePostParams) -> ActionResult:
         body["featured_media"] = params.featured_media_id
 
     if not body:
+        if params.meta_description is not None or params.focus_keyword is not None:
+            return ActionResult.error(
+                "meta_description/focus_keyword can't be set on this site — it's connected via "
+                "Application Password/REST, and Rank Math doesn't expose those fields to the REST "
+                "API. Connect this site over SSH instead, or pass another field to update too.",
+                retryable=False)
         return ActionResult.error("No fields to update — pass at least one of title/content/status/excerpt/date/slug/featured_media_id.",
                                   retryable=False)
 
@@ -197,8 +228,13 @@ async def update_post(ctx, params: UpdatePostParams) -> ActionResult:
     data = r.body if isinstance(r.body, dict) else {}
     post = Post(id=str(data.get("id", params.post_id)), title=wp_title(data), kind="wp_post",
                 status=data.get("status", ""), link=data.get("link", ""), date=data.get("date"))
+    summary = f"✅ Updated \"{post.title}\" ({post.status})"
+    if params.meta_description is not None or params.focus_keyword is not None:
+        summary += (" — ⚠️ Rank Math SEO fields NOT saved: this site is connected via Application "
+                   "Password/REST, and Rank Math does not expose meta_description/focus_keyword to "
+                   "the REST API. Connect this site over SSH to set them.")
     return ActionResult.success(
-        post, summary=f"✅ Updated \"{post.title}\" ({post.status})",
+        post, summary=summary,
         refresh_panels=["center"],
     )
 

@@ -121,3 +121,98 @@ async def test_create_post_rest_sends_custom_slug_in_body():
         slug="infinityfree-review-2026"))
     assert r.status == "success"
     assert r.data.link == "https://x.com/infinityfree-review-2026/"
+
+
+# ── Rank Math SEO meta (meta_description / focus_keyword) ─────────────────────
+
+async def test_create_post_ssh_writes_rank_math_meta(monkeypatch):
+    ctx = await _ssh_ctx()
+    seen = {}
+
+    async def _fake_create(cred, title, content, status, excerpt="", date=None, slug=None):
+        return {"id": "7", "title": title, "status": status}, None
+
+    async def _fake_rank_math(cred, post_id, description=None, focus_keyword=None):
+        seen["post_id"] = post_id
+        seen["description"] = description
+        seen["focus_keyword"] = focus_keyword
+        return []
+
+    monkeypatch.setattr(hp.wp_cli, "create_post_cli", _fake_create)
+    monkeypatch.setattr(hp.wp_cli, "set_rank_math_meta_cli", _fake_rank_math)
+    r = await hp.create_post(ctx, CreatePostParams(
+        site_id="ssh-site", title="Hi", content="Body",
+        meta_description="A great review of InfinityFree hosting in 2026.",
+        focus_keyword="infinityfree review"))
+
+    assert r.status == "success"
+    assert seen["post_id"] == "7"
+    assert seen["description"] == "A great review of InfinityFree hosting in 2026."
+    assert seen["focus_keyword"] == "infinityfree review"
+    assert "Rank Math SEO fields set" in r.summary
+
+
+async def test_create_post_ssh_reports_rank_math_meta_failure(monkeypatch):
+    ctx = await _ssh_ctx()
+
+    async def _fake_create(cred, title, content, status, excerpt="", date=None, slug=None):
+        return {"id": "7", "title": title, "status": status}, None
+
+    async def _fake_rank_math(cred, post_id, description=None, focus_keyword=None):
+        return ["SSH connection failed"]
+
+    monkeypatch.setattr(hp.wp_cli, "create_post_cli", _fake_create)
+    monkeypatch.setattr(hp.wp_cli, "set_rank_math_meta_cli", _fake_rank_math)
+    r = await hp.create_post(ctx, CreatePostParams(
+        site_id="ssh-site", title="Hi", content="Body", meta_description="desc"))
+
+    assert r.status == "success"  # the post itself was created fine
+    assert "NOT saved" in r.summary
+
+
+async def test_create_post_rest_site_meta_description_warns_not_saved():
+    ctx = MockContext()
+    await storage.save_site_record(ctx, {"id": "x-com", "name": "X", "url": "https://x.com",
+                                         "username": "admin", "status": "connected"})
+    await storage.set_credential(ctx, "x-com", "pw")
+    ctx.http.mock_post("https://x.com/wp-json/wp/v2/posts",
+                       {"id": 42, "title": {"rendered": "Hi"}, "status": "draft",
+                        "link": "https://x.com/?p=42", "date": "2026-07-16T10:00:00"}, 201)
+    r = await hp.create_post(ctx, CreatePostParams(
+        site_id="x-com", title="Hi", content="Body", meta_description="desc"))
+    assert r.status == "success"
+    assert "NOT saved" in r.summary
+    assert "SSH" in r.summary
+
+
+async def test_update_post_ssh_meta_only_writes_rank_math_without_cli_update(monkeypatch):
+    ctx = await _ssh_ctx()
+    seen = {}
+
+    async def _fake_update_cli(*a, **kw):
+        raise AssertionError("update_post_cli should not be called when only SEO meta changed")
+
+    async def _fake_rank_math(cred, post_id, description=None, focus_keyword=None):
+        seen["post_id"] = post_id
+        seen["focus_keyword"] = focus_keyword
+        return []
+
+    monkeypatch.setattr(hp.wp_cli, "update_post_cli", _fake_update_cli)
+    monkeypatch.setattr(hp.wp_cli, "set_rank_math_meta_cli", _fake_rank_math)
+    r = await hp.update_post(ctx, UpdatePostParams(
+        site_id="ssh-site", post_id="7", focus_keyword="infinityfree review"))
+
+    assert r.status == "success"
+    assert seen["post_id"] == "7"
+    assert seen["focus_keyword"] == "infinityfree review"
+
+
+async def test_update_post_rest_site_meta_only_returns_clear_error():
+    ctx = MockContext()
+    await storage.save_site_record(ctx, {"id": "x-com", "name": "X", "url": "https://x.com",
+                                         "username": "admin", "status": "connected"})
+    await storage.set_credential(ctx, "x-com", "pw")
+    r = await hp.update_post(ctx, UpdatePostParams(
+        site_id="x-com", post_id="42", meta_description="desc"))
+    assert r.status != "success"
+    assert "SSH" in r.error

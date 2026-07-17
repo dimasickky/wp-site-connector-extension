@@ -72,6 +72,8 @@ class CreatePostParams(BaseModel):
     categories: list[int] = Field(default_factory=list, description="Optional WordPress category IDs")
     tags: list[int] = Field(default_factory=list, description="Optional WordPress tag IDs")
     featured_media_id: int | None = Field(default=None, description="Media library id to use as the featured image (cover) — get this from a prior upload_media call. This sets the post's cover, separate from any images embedded in content.")
+    meta_description: str | None = Field(default=None, description="Rank Math SEO meta description shown in Google search results (aim for ~120-160 characters). Only takes effect on SSH-connected sites — Rank Math does not expose this field to the WordPress REST API, so it is silently ignored on Application-Password sites.")
+    focus_keyword: str | None = Field(default=None, description="Rank Math focus keyword for this post's SEO analysis. Only takes effect on SSH-connected sites — same REST limitation as meta_description.")
 
 
 class UpdatePostParams(BaseModel):
@@ -84,6 +86,8 @@ class UpdatePostParams(BaseModel):
     date: str | None = Field(default=None, description="New ISO 8601 scheduled datetime — omit to leave unchanged")
     slug: str | None = Field(default=None, description="New custom URL slug — omit to leave unchanged")
     featured_media_id: int | None = Field(default=None, description="New media library id for the featured image (cover) — omit to leave unchanged. Get this from a prior upload_media call.")
+    meta_description: str | None = Field(default=None, description="New Rank Math SEO meta description — omit to leave unchanged. Only takes effect on SSH-connected sites (see create_post).")
+    focus_keyword: str | None = Field(default=None, description="New Rank Math focus keyword — omit to leave unchanged. Only takes effect on SSH-connected sites (see create_post).")
 
 
 class UploadMediaParams(BaseModel):

@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.6",
   "app_id": "wp-site-connector-extension",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "name": "WP Site Connector",
   "description": "Connect WordPress sites by URL and Application Password and read their posts, pages, media, and health.",
   "icon": "icon.svg",
@@ -3019,6 +3019,32 @@
             "default": null,
             "description": "Media library id to use as the featured image (cover) — get this from a prior upload_media call. This sets the post's cover, separate from any images embedded in content.",
             "title": "Featured Media Id"
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Rank Math SEO meta description shown in Google search results (aim for ~120-160 characters). Only takes effect on SSH-connected sites — Rank Math does not expose this field to the WordPress REST API, so it is silently ignored on Application-Password sites.",
+            "title": "Meta Description"
+          },
+          "focus_keyword": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Rank Math focus keyword for this post's SEO analysis. Only takes effect on SSH-connected sites — same REST limitation as meta_description.",
+            "title": "Focus Keyword"
           }
         },
         "required": [
@@ -3241,6 +3267,32 @@
             "default": null,
             "description": "New media library id for the featured image (cover) — omit to leave unchanged. Get this from a prior upload_media call.",
             "title": "Featured Media Id"
+          },
+          "meta_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New Rank Math SEO meta description — omit to leave unchanged. Only takes effect on SSH-connected sites (see create_post).",
+            "title": "Meta Description"
+          },
+          "focus_keyword": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New Rank Math focus keyword — omit to leave unchanged. Only takes effect on SSH-connected sites (see create_post).",
+            "title": "Focus Keyword"
           }
         },
         "required": [
