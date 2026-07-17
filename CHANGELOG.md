@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.6.0 — 2026-07-17 — Declared capabilities + richer connected-sites context
+
+### Added
+- **Declared `capabilities` on the extension** (`read`/`write`) so the platform's
+  per-tool access checks have an explicit capability set to enforce against,
+  instead of falling back to an unrestricted default.
+- **`sites_overview` background context now includes the connected sites
+  themselves** (id, title, URL) — not just a count — so the assistant can
+  answer site-scoped questions without re-listing sites on every turn.
+  Refreshes automatically after a site is connected or disconnected, and
+  surfaces a short alert when the site list changes.
+
 ## v0.5.2 — 2026-07-17 — Rank Math SEO meta (meta_description, focus_keyword)
 
 ### Added

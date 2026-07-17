@@ -2,19 +2,37 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.6",
   "app_id": "wp-site-connector-extension",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "name": "WP Site Connector",
   "description": "Connect WordPress sites by URL and Application Password and read their posts, pages, media, and health.",
   "icon": "icon.svg",
   "actions_explicit": true,
   "system": false,
-  "capabilities": [],
+  "capabilities": [
+    "wp-site-connector-extension:read",
+    "wp-site-connector-extension:write"
+  ],
   "tools": [
     {
       "name": "skeleton_refresh_sites_overview",
-      "description": "How many WordPress sites are connected.",
+      "description": "Connected WordPress sites — id, title, url per site.",
       "scopes": [],
       "parameters": {}
+    },
+    {
+      "name": "skeleton_alert_sites_overview",
+      "description": "Alert on sites connected or disconnected.",
+      "scopes": [],
+      "parameters": {
+        "old": {
+          "type": "string",
+          "required": false
+        },
+        "new": {
+          "type": "string",
+          "required": false
+        }
+      }
     },
     {
       "name": "connect_site",
