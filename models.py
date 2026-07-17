@@ -39,6 +39,15 @@ class AddSSHParams(BaseModel):
     ssh_password: str = Field(default="", description="SSH password. Use this OR ssh_key.")
 
 
+class ConnectSiteSSHParams(BaseModel):
+    ssh_host: str = Field(description="SSH hostname or IP address of the server")
+    ssh_port: int = Field(default=22, description="SSH port (default 22)")
+    ssh_user: str = Field(description="SSH username")
+    wp_path: str = Field(description="Absolute path to the WordPress installation on the server, e.g. /var/www/html")
+    ssh_key: str = Field(default="", description="SSH private key in PEM format. Use this OR ssh_password.")
+    ssh_password: str = Field(default="", description="SSH password. Use this OR ssh_key.")
+
+
 class ListCommentsParams(BaseModel):
     site_id: str = Field(description="Site id from a previous list_sites call — never invent it")
     status: str = Field(default="hold", description="Comment status: 'hold' (pending moderation), 'approved', 'spam', or 'all'")
@@ -89,6 +98,7 @@ class UploadMediaParams(BaseModel):
 class Site(sdl.Entity):
     username: str = ""
     last_checked: str | None = None
+    auth_mode: str = "app_password"  # "app_password" | "ssh" | "both"
 
 
 class Post(sdl.Entity):

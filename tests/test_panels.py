@@ -17,7 +17,8 @@ async def test_sidebar_empty_state():
     ctx = MockContext()
     node = await panels.sidebar(ctx)
     s = str(node)
-    assert "Connect Site" in s
+    assert "Connect via Password" in s
+    assert "Connect via SSH" in s
     assert "Divider" in s
     assert "No sites" in s
 
@@ -38,7 +39,7 @@ async def test_sidebar_connect_button_at_top():
     ctx = MockContext()
     node = await panels.sidebar(ctx)
     s = str(node)
-    assert s.index("Connect Site") < s.index("Divider")
+    assert s.index("Connect via Password") < s.index("Divider")
 
 
 async def test_sidebar_divider_present():
@@ -190,3 +191,35 @@ async def test_center_connect_view_overrides_site_id():
     node = await panels.center(ctx, view="connect", site_id="x-com")
     s = str(node)
     assert "app_password" in s
+
+
+async def test_center_shows_connect_ssh_form_when_view_connect_ssh():
+    ctx = MockContext()
+    node = await panels.center(ctx, view="connect_ssh", site_id="")
+    s = str(node)
+    assert "ssh_host" in s and "ssh_user" in s and "wp_path" in s
+    assert "app_password" not in s
+
+
+async def test_center_connect_ssh_form_has_cancel_and_no_app_password_needed_alert():
+    ctx = MockContext()
+    node = await panels.center(ctx, view="connect_ssh", site_id="")
+    s = str(node)
+    assert "Cancel" in s
+    assert "Alert" in s
+
+
+async def test_center_detail_for_ssh_site_shows_ssh_auth_mode_not_credential_error():
+    ctx = MockContext()
+    await storage.save_site_record(ctx, {
+        "id": "ssh-site", "name": "ssh-site", "url": "https://ssh-site.example",
+        "auth_mode": "ssh", "status": "connected",
+    })
+    await storage.set_ssh_cred(ctx, "ssh-site", {
+        "host": "1.2.3.4", "port": 22, "user": "root", "wp_path": "/var/www/html",
+        "password": "super-secret",
+    })
+    node = await panels.center(ctx, view="", site_id="ssh-site")
+    s = str(node)
+    assert "SSH only" in s
+    assert "Credential missing" not in s

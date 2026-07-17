@@ -29,6 +29,14 @@ def site_id_from_url(url: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", host).strip("-")
 
 
+def site_id_from_host(host: str, wp_path: str = "") -> str:
+    """Derive a stable site_id from an SSH host when no real site URL is known yet
+    (SSH-only connect, before we can confirm the WordPress siteurl via WP-CLI)."""
+    slug = re.sub(r"^www\.", "", host.strip().lower())
+    slug = re.sub(r"[^a-z0-9]+", "-", slug).strip("-")
+    return slug or "ssh-site"
+
+
 def wp_error_message(status_code: int) -> str:
     if status_code in _ERROR_MESSAGES:
         return _ERROR_MESSAGES[status_code]

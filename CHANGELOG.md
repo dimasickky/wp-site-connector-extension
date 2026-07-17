@@ -1,5 +1,62 @@
 # Changelog
 
+## v0.5.0 — 2026-07-17 — Connect via SSH only (no Application Password)
+
+### Added
+- **`connect_site_ssh`** — a second, independent way to connect a site:
+  SSH host/port/user/path + a private key or password, and nothing else.
+  No WordPress Application Password is required or stored for these sites.
+  Validated over WP-CLI (`wp core version`, then `wp option get siteurl` to
+  learn the real site URL and give the connected site a proper name/id) —
+  no REST call is made anywhere in this path.
+- **`Site.auth_mode`** field (`"app_password"` | `"ssh"`) records which way a
+  site was connected, so every other handler knows which client to use
+  without guessing.
+- **`create_post` / `update_post` / `upload_media`** now branch on
+  `auth_mode`: Application-Password sites still go through the REST API
+  exactly as before; SSH-only sites publish entirely through WP-CLI
+  (`wp post create`, `wp post update`, `wp media import`) via new
+  `wp_cli.create_post_cli` / `update_post_cli` / `upload_media_cli` /
+  `list_posts_cli` helpers. Existing REST-connected sites are completely
+  unaffected — this is additive, not a replacement.
+- Panel: a new **"Connect via SSH"** button next to "Connect via Password"
+  in the sidebar, its own form (no Application Password field at all), and
+  a dedicated SSH-only detail view (server health + Posts via WP-CLI)
+  instead of the old REST-only detail view falsely reporting "Credential
+  missing" for these sites.
+
+### Security
+- Post title/excerpt/search terms are always shell-quoted with
+  `shlex.quote()` before being interpolated into any remote WP-CLI command.
+- Post **content** is never placed on the command line at all — it is piped
+  over STDIN to `wp post create -` / `wp post update <id> -` (WP-CLI's own
+  documented mechanism for this), which sidesteps shell-escaping edge cases
+  entirely rather than trying to escape arbitrarily large/special text.
+- Media bytes for `upload_media_cli` are likewise piped over STDIN
+  (base64, decoded server-side into a throwaway `mktemp` file that is
+  removed after `wp media import` runs) — never a command-line argument.
+- `wp_cli.test_connection` / `get_server_info`'s pre-existing `wp_path`
+  interpolation is now also `shlex.quote()`-wrapped (was previously
+  unquoted — a latent injection surface via a crafted `wp_path`, closed
+  as part of this pass since the new CLI helpers share the same command
+  -building pattern).
+
+### Tests
+- 22 new tests: SSH-only connect (success, missing credential, connection
+  failure, site-url failure cleanup), publish/update/upload branching by
+  `auth_mode` (`tests/test_publish_ssh.py`), WP-CLI command-construction
+  injection safety (`tests/test_wp_cli_publish.py`), and panel rendering
+  for the new SSH connect form + SSH-only detail view.
+- Full suite: **105/105 passing**.
+- `imperal validate .`: **0 errors, 0 warnings**, 1 informational lifecycle
+  suggestion (pre-existing, unrelated).
+
+### Not done yet (still open)
+- SSH-only sites' detail view only lists Posts via WP-CLI for now — pages,
+  media library browsing, comments, users, and WooCommerce orders still
+  require the Application Password/REST connection method.
+- No page (`create_page`) equivalent on either auth path.
+
 ## v0.4.1 — 2026-07-16 — SSH password authentication
 
 ### Fixed

@@ -5,6 +5,7 @@ from imperal_sdk import ui
 from app import ext
 from wp_client import wp_get, wp_title
 import storage
+import wp_cli
 
 _BUILTIN_TYPES = {
     "post", "page", "attachment", "revision", "nav_menu_item",
@@ -54,7 +55,8 @@ def _lamp(r: dict) -> ui.Badge:
     default_width=280,
     min_width=200,
     max_width=400,
-    refresh="on_event:wp-site-connector.connect_site,wp-site-connector.forget_site,"
+    refresh="on_event:wp-site-connector.connect_site,wp-site-connector.connect_site_ssh,"
+            "wp-site-connector.forget_site,"
             "wp-site-connector.refresh_site,wp-site-connector.refresh_all_sites,"
             "wp-site-connector.add_ssh,wp-site-connector.remove_ssh,"
             "wp-site-connector.get_server_info",
@@ -63,8 +65,10 @@ async def sidebar(ctx, active_site_id="", **kwargs):
     rows = await storage.list_site_records(ctx)
 
     top_bar = ui.Stack(direction="h", gap=2, children=[
-        ui.Button("Connect Site", icon="Plus", variant="primary",
+        ui.Button("Connect via Password", icon="Plus", variant="primary",
                   on_click=ui.Call("__panel__center", view="connect", site_id="")),
+        ui.Button("Connect via SSH", icon="Terminal", variant="secondary",
+                  on_click=ui.Call("__panel__center", view="connect_ssh", site_id="")),
         ui.Tooltip(
             content="Pings all connected sites in parallel, updates their stored status, and clears content caches so the next view fetches fresh data.",
             children=ui.Button("Refresh All", icon="RefreshCw", variant="secondary",
@@ -115,6 +119,8 @@ async def center(ctx, view="", site_id="",
                  **kwargs):
     if view == "connect":
         return _render_connect_form()
+    if view == "connect_ssh":
+        return _render_connect_ssh_form()
     if view == "add_ssh" and site_id:
         if await storage.has_ssh(ctx, site_id):
             return await _render_detail(ctx, site_id, group_tab, std_tab, act_tab, cpt_tab, tax_tab)
@@ -144,6 +150,32 @@ def _render_connect_form():
             _field("Application Password",
                    "Create this under Users → Profile → Application Passwords in WordPress",
                    ui.Password(param_name="app_password")),
+        ]),
+        ui.Button("Cancel", variant="ghost",
+                  on_click=ui.Call("__panel__center", view="", site_id="")),
+    ], gap=4)
+
+
+def _render_connect_ssh_form():
+    return ui.Stack(children=[
+        ui.Alert(message="No WordPress Application Password needed — this connects "
+                         "straight over SSH and talks to the site through WP-CLI.",
+                 type="info"),
+        ui.Form(action="connect_site_ssh", submit_label="Connect via SSH", children=[
+            _field("SSH Host", "Hostname or IP address, e.g. server1.webhostmost.com",
+                   ui.Input(param_name="ssh_host", placeholder="mysite.com")),
+            _field("SSH Port", "SSH port (default 22)",
+                   ui.Input(param_name="ssh_port", placeholder="22")),
+            _field("SSH User", "SSH username, e.g. root, ubuntu, deploy",
+                   ui.Input(param_name="ssh_user", placeholder="ubuntu")),
+            _field("WordPress Path", "Absolute path to WordPress on the server",
+                   ui.Input(param_name="wp_path", placeholder="/var/www/html")),
+            _field("Private Key",
+                   "Paste your SSH private key (PEM format). Leave empty to use password.",
+                   ui.TextArea(param_name="ssh_key",
+                               placeholder="-----BEGIN OPENSSH PRIVATE KEY-----\n...", rows=6)),
+            _field("SSH Password", "Leave empty if using a private key above.",
+                   ui.Password(param_name="ssh_password")),
         ]),
         ui.Button("Cancel", variant="ghost",
                   on_click=ui.Call("__panel__center", view="", site_id="")),
@@ -244,6 +276,96 @@ def _render_content_table(items, tab):
     return ui.DataTable(columns=cols, rows=rows)
 
 
+# ── Site detail (SSH-only sites — no Application Password, WP-CLI throughout) ─
+
+async def _render_detail_ssh(ctx, record, site_id):
+    base_url = record.get("url", "") or record.get("ssh_host", "")
+    name = urlparse(base_url).netloc or record.get("name", site_id) if base_url.startswith("http") else record.get("name", site_id)
+
+    reachable = record.get("status") == "connected"
+
+    ssh_cred = await storage.get_ssh_cred(ctx, site_id)
+
+    health_row = ui.Stack(direction="h", justify="between", align="center", children=[
+        ui.Stats(columns=2, children=[
+            ui.Stat(label="Reachable", value="Yes" if reachable else "No",
+                    color="green" if reachable else "red"),
+            ui.Stat(label="Auth mode", value="SSH only", color="blue"),
+        ]),
+        ui.Button("Remove Site", icon="Trash2", variant="ghost", size="sm",
+                  on_click=ui.Call("forget_site", site_id=site_id)),
+    ])
+
+    server_section_children = []
+    wp_ver = record.get("wp_version")
+    php_ver = record.get("php_version")
+    db_size = record.get("db_size_mb")
+    cron_cnt = record.get("cron_count")
+    last_check = record.get("server_last_checked", "")
+
+    refresh_server_btn = ui.Button(
+        "Refresh server info", icon="RefreshCw", variant="ghost", size="sm",
+        on_click=ui.Call("get_server_info", site_id=site_id),
+    )
+
+    if not wp_ver:
+        server_section_children = [
+            ui.Divider(label="Server"),
+            ui.Stack(direction="h", align="center", gap=3, children=[
+                ui.Text(record.get("ssh_error") or "No server data yet."),
+                refresh_server_btn,
+            ]),
+        ]
+    else:
+        stat_items = [
+            ui.Stat(label="WordPress", value=wp_ver, color="blue"),
+            ui.Stat(label="PHP", value=php_ver or "—", color="blue"),
+        ]
+        if db_size:
+            stat_items.append(ui.Stat(label="Database", value=f"{db_size} MB", color="blue"))
+        if cron_cnt is not None:
+            stat_items.append(ui.Stat(label="Cron jobs", value=str(cron_cnt), color="blue"))
+        checked_text = f"Last checked: {last_check[:16].replace('T', ' ')}" if last_check else ""
+        server_section_children = [
+            ui.Divider(label="Server"),
+            ui.Stats(columns=len(stat_items), children=stat_items),
+            ui.Stack(direction="h", justify="between", align="center", children=[
+                ui.Text(checked_text, variant="caption"),
+                refresh_server_btn,
+            ]),
+        ]
+
+    # Posts, read live via WP-CLI (no REST/Application Password involved).
+    posts_content: ui.Node
+    if not ssh_cred:
+        posts_content = ui.Alert(message="SSH credential missing — reconnect this site.", type="error")
+    else:
+        posts, err = await wp_cli.list_posts_cli(ssh_cred, limit=20)
+        if err:
+            posts_content = ui.Alert(message=f"Could not load posts via WP-CLI: {err}", type="error")
+        elif not posts:
+            posts_content = ui.Empty(message="No posts found.")
+        else:
+            cols = [ui.DataColumn("title", "Title", sortable=True),
+                    ui.DataColumn("status", "Status", sortable=True),
+                    ui.DataColumn("date", "Date", sortable=True)]
+            rows = [{"title": p.get("post_title", ""), "status": p.get("post_status", ""),
+                    "date": (p.get("post_date", "") or "")[:10]} for p in posts]
+            posts_content = ui.DataTable(columns=cols, rows=rows)
+
+    page_children = [
+        health_row,
+        *server_section_children,
+        ui.Divider(label="Posts"),
+        posts_content,
+        ui.Alert(message="This site is connected via SSH only. Pages, media, comments and other "
+                         "content browsing here need an Application Password connection — publishing "
+                         "(create_post/update_post/upload_media) works fully over SSH already.",
+                 type="info"),
+    ]
+    return ui.Page(title=name, subtitle=base_url or record.get("ssh_host", ""), children=page_children)
+
+
 # ── Site detail ───────────────────────────────────────────────────────────────
 
 async def _render_detail(ctx, site_id,
@@ -255,6 +377,11 @@ async def _render_detail(ctx, site_id,
         return ui.Empty(message="Site not found — it may have been removed.")
 
     base_url = record.get("url", "")
+    auth_mode = record.get("auth_mode", "app_password")
+
+    if auth_mode == "ssh":
+        return await _render_detail_ssh(ctx, record, site_id)
+
     pw = await storage.get_credential(ctx, site_id)
     if not base_url or not pw:
         return ui.Alert(message="Credential missing — reconnect this site.", type="error")

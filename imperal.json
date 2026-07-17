@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.6",
   "app_id": "wp-site-connector-extension",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "name": "WP Site Connector",
   "description": "Connect WordPress sites by URL and Application Password and read their posts, pages, media, and health.",
   "icon": "icon.svg",
@@ -137,6 +137,11 @@
             ],
             "default": null,
             "title": "Last Checked"
+          },
+          "auth_mode": {
+            "default": "app_password",
+            "title": "Auth Mode",
+            "type": "string"
           }
         },
         "required": [
@@ -148,6 +153,167 @@
         "x-sdl": "entity"
       },
       "event": "wp-site-connector.connect_site",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "wp-site-connector"
+    },
+    {
+      "name": "connect_site_ssh",
+      "description": "Connect a WordPress site over SSH ONLY, without a WordPress Application Password. Requires SSH access and WP-CLI on the server. Publishing/reading content for this site will then run entirely through WP-CLI over SSH instead of the REST API.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "wp.connect",
+        "wp.ssh_connect"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "ssh_host": {
+            "description": "SSH hostname or IP address of the server",
+            "title": "Ssh Host",
+            "type": "string"
+          },
+          "ssh_port": {
+            "default": 22,
+            "description": "SSH port (default 22)",
+            "title": "Ssh Port",
+            "type": "integer"
+          },
+          "ssh_user": {
+            "description": "SSH username",
+            "title": "Ssh User",
+            "type": "string"
+          },
+          "wp_path": {
+            "description": "Absolute path to the WordPress installation on the server, e.g. /var/www/html",
+            "title": "Wp Path",
+            "type": "string"
+          },
+          "ssh_key": {
+            "default": "",
+            "description": "SSH private key in PEM format. Use this OR ssh_password.",
+            "title": "Ssh Key",
+            "type": "string"
+          },
+          "ssh_password": {
+            "default": "",
+            "description": "SSH password. Use this OR ssh_key.",
+            "title": "Ssh Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ssh_host",
+          "ssh_user",
+          "wp_path"
+        ],
+        "title": "ConnectSiteSSHParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "username": {
+            "default": "",
+            "title": "Username",
+            "type": "string"
+          },
+          "last_checked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Last Checked"
+          },
+          "auth_mode": {
+            "default": "app_password",
+            "title": "Auth Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "Site",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "wp-site-connector.connect_site_ssh",
       "background": false,
       "long_running": false,
       "scopes": [],
@@ -262,6 +428,11 @@
             ],
             "default": null,
             "title": "Last Checked"
+          },
+          "auth_mode": {
+            "default": "app_password",
+            "title": "Auth Mode",
+            "type": "string"
           }
         },
         "required": [
@@ -423,6 +594,11 @@
             ],
             "default": null,
             "title": "Last Checked"
+          },
+          "auth_mode": {
+            "default": "app_password",
+            "title": "Auth Mode",
+            "type": "string"
           }
         },
         "required": [
@@ -548,6 +724,11 @@
             ],
             "default": null,
             "title": "Last Checked"
+          },
+          "auth_mode": {
+            "default": "app_password",
+            "title": "Auth Mode",
+            "type": "string"
           }
         },
         "required": [
@@ -664,6 +845,11 @@
                 ],
                 "default": null,
                 "title": "Last Checked"
+              },
+              "auth_mode": {
+                "default": "app_password",
+                "title": "Auth Mode",
+                "type": "string"
               }
             },
             "required": [
@@ -1522,6 +1708,11 @@
             ],
             "default": null,
             "title": "Last Checked"
+          },
+          "auth_mode": {
+            "default": "app_password",
+            "title": "Auth Mode",
+            "type": "string"
           }
         },
         "required": [
@@ -3301,7 +3492,7 @@
       "title": "WP Sites",
       "tree": {},
       "icon": "",
-      "refresh": "on_event:wp-site-connector.connect_site,wp-site-connector.forget_site,wp-site-connector.refresh_site,wp-site-connector.refresh_all_sites,wp-site-connector.add_ssh,wp-site-connector.remove_ssh,wp-site-connector.get_server_info",
+      "refresh": "on_event:wp-site-connector.connect_site,wp-site-connector.connect_site_ssh,wp-site-connector.forget_site,wp-site-connector.refresh_site,wp-site-connector.refresh_all_sites,wp-site-connector.add_ssh,wp-site-connector.remove_ssh,wp-site-connector.get_server_info",
       "center_overlay": false,
       "default_width": 280,
       "min_width": 200,

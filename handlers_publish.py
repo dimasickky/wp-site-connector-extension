@@ -5,12 +5,14 @@ from imperal_sdk import ActionResult
 from models import CreatePostParams, UpdatePostParams, UploadMediaParams, Post, MediaItem
 from wp_client import wp_post, wp_upload_media, guess_image_content_type, wp_error_message, wp_title
 import storage
+import wp_cli
 
 
 _VALID_STATUSES = {"draft", "publish", "pending", "future"}
 
 
 async def _authed(ctx, site_id):
+    """REST auth path (Application Password). Returns ((base_url, username, password), None) or (None, error)."""
     record = await storage.get_site_record(ctx, site_id)
     if not record:
         return None, "No connected site with that id."
@@ -18,6 +20,28 @@ async def _authed(ctx, site_id):
     if not pw:
         return None, "Stored credential is missing — reconnect the site."
     return (record["url"], record["username"], pw), None
+
+
+async def _resolve_site(ctx, site_id):
+    """Look up a site and decide which client to publish/read through.
+
+    Returns (mode, session, error) where mode is 'rest' (session =
+    (base_url, username, password)) or 'ssh' (session = the decrypted SSH
+    credential dict for wp_cli). A site connected via connect_site_ssh has
+    no Application Password at all, so REST is never attempted for it.
+    """
+    record = await storage.get_site_record(ctx, site_id)
+    if not record:
+        return None, None, "No connected site with that id."
+    if record.get("auth_mode") == "ssh":
+        cred = await storage.get_ssh_cred(ctx, site_id)
+        if not cred:
+            return None, None, "Stored SSH credential is missing — reconnect the site."
+        return "ssh", cred, None
+    pw = await storage.get_credential(ctx, site_id)
+    if not pw:
+        return None, None, "Stored credential is missing — reconnect the site."
+    return "rest", (record["url"], record.get("username", ""), pw), None
 
 
 @chat.function(
@@ -29,7 +53,8 @@ async def _authed(ctx, site_id):
     event="wp-site-connector.create_post",
 )
 async def create_post(ctx, params: CreatePostParams) -> ActionResult:
-    """Create a WordPress post via the REST API (POST /wp/v2/posts)."""
+    """Create a WordPress post — via the REST API for Application Password sites,
+    or via WP-CLI over SSH (no REST call at all) for SSH-only sites."""
     if params.status not in _VALID_STATUSES:
         return ActionResult.error(
             f"Invalid status '{params.status}' — use draft, publish, pending, or future.",
@@ -41,11 +66,24 @@ async def create_post(ctx, params: CreatePostParams) -> ActionResult:
             retryable=False,
         )
 
-    auth, err = await _authed(ctx, params.site_id)
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
         return ActionResult.error(err, retryable=False)
-    base_url, username, pw = auth
 
+    if mode == "ssh":
+        result, cli_err = await wp_cli.create_post_cli(
+            session, title=params.title, content=params.content, status=params.status,
+            excerpt=params.excerpt, date=params.date)
+        if cli_err:
+            return ActionResult.error(f"WP-CLI publish failed: {cli_err}", retryable=True)
+        post = Post(id=result["id"], title=result["title"], kind="wp_post",
+                    status=result["status"], link="", date=params.date)
+        icon = "✅" if post.status == "publish" else "📝"
+        return ActionResult.success(
+            post, summary=f"{icon} Created \"{post.title}\" ({post.status}) via SSH",
+            refresh_panels=["center"])
+
+    base_url, username, pw = session
     body = {
         "title": params.title,
         "content": params.content,
@@ -92,18 +130,34 @@ async def create_post(ctx, params: CreatePostParams) -> ActionResult:
     event="wp-site-connector.update_post",
 )
 async def update_post(ctx, params: UpdatePostParams) -> ActionResult:
-    """Partially update a WordPress post via the REST API (POST /wp/v2/posts/<id>)."""
+    """Partially update a WordPress post — via REST for Application Password
+    sites, or via WP-CLI over SSH for SSH-only sites. Only fields you pass are changed."""
     if params.status is not None and params.status not in _VALID_STATUSES:
         return ActionResult.error(
             f"Invalid status '{params.status}' — use draft, publish, pending, or future.",
             retryable=False,
         )
 
-    auth, err = await _authed(ctx, params.site_id)
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
         return ActionResult.error(err, retryable=False)
-    base_url, username, pw = auth
 
+    if mode == "ssh":
+        if params.title is None and params.content is None and params.status is None and params.excerpt is None:
+            return ActionResult.error(
+                "No fields to update — pass at least one of title/content/status/excerpt.",
+                retryable=False)
+        result, cli_err = await wp_cli.update_post_cli(
+            session, post_id=params.post_id, title=params.title, content=params.content,
+            status=params.status, excerpt=params.excerpt)
+        if cli_err:
+            return ActionResult.error(f"WP-CLI update failed: {cli_err}", retryable=True)
+        post = Post(id=result["id"], title=result["title"] or "", kind="wp_post",
+                    status=result["status"] or "", link="", date=None)
+        return ActionResult.success(
+            post, summary=f"✅ Updated post {post.id} via SSH", refresh_panels=["center"])
+
+    base_url, username, pw = session
     body = {}
     if params.title is not None:
         body["title"] = params.title
@@ -173,7 +227,8 @@ def _extract_b64(payload) -> tuple[str, str, str]:
     event="wp-site-connector.upload_media",
 )
 async def upload_media(ctx, params: UploadMediaParams) -> ActionResult:
-    """Upload a base64-encoded image to the WP Media Library (POST /wp/v2/media)."""
+    """Upload a base64-encoded image — via REST (POST /wp/v2/media) for Application
+    Password sites, or via `wp media import` over SSH for SSH-only sites."""
     b64, filename, upload_content_type = _extract_b64(params.files)
     if not b64:
         return ActionResult.error("No file provided — attach an image to upload.", retryable=False)
@@ -188,11 +243,22 @@ async def upload_media(ctx, params: UploadMediaParams) -> ActionResult:
 
     content_type = guess_image_content_type(filename, upload_content_type)
 
-    auth, err = await _authed(ctx, params.site_id)
+    mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
         return ActionResult.error(err, retryable=False)
-    base_url, username, pw = auth
 
+    if mode == "ssh":
+        result, cli_err = await wp_cli.upload_media_cli(
+            session, b64_data=b64, filename=filename, title=params.title or "")
+        if cli_err:
+            return ActionResult.error(f"WP-CLI media upload failed: {cli_err}", retryable=True)
+        media = MediaItem(id=result["id"], title=result["title"], kind="wp_media",
+                          url="", mime_type=content_type)
+        return ActionResult.success(
+            media, summary=f"🖼️ Uploaded \"{media.title}\" via SSH (media_id={media.id})",
+            refresh_panels=["center"])
+
+    base_url, username, pw = session
     try:
         r = await wp_upload_media(ctx, base_url, username=username, app_password=pw,
                                   file_bytes=file_bytes, filename=filename, content_type=content_type)

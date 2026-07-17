@@ -8,6 +8,7 @@ after the connection is established.
 import asyncio
 import json
 import os
+import shlex
 import stat
 import tempfile
 import contextlib
@@ -132,8 +133,14 @@ def _ssh_cmd(host: str, port: int, user: str, key_path: str | None, remote_cmd: 
 
 async def _run(host, port, user, key_path, remote_cmd, known_hosts_path=None,
                password: str | None = None, askpass_path: str | None = None,
-               timeout=_CMD_TIMEOUT) -> tuple[str | None, str | None]:
-    """Run one remote command. Returns (stdout, error_message)."""
+               timeout=_CMD_TIMEOUT, stdin_data: str | None = None) -> tuple[str | None, str | None]:
+    """Run one remote command. Returns (stdout, error_message).
+
+    stdin_data, when given, is piped to the remote command's STDIN (e.g. for
+    `wp post create -` / `wp post update <id> -`, which read post content
+    from STDIN rather than a command-line argument — safer for large or
+    special-character-heavy content than any amount of shell-escaping).
+    """
     env = None
     if password:
         env = os.environ.copy()
@@ -147,7 +154,7 @@ async def _run(host, port, user, key_path, remote_cmd, known_hosts_path=None,
         proc = await asyncio.create_subprocess_exec(
             *_ssh_cmd(host, port, user, key_path, remote_cmd, known_hosts_path,
                       password_auth=bool(password)),
-            stdin=asyncio.subprocess.DEVNULL,
+            stdin=asyncio.subprocess.PIPE if stdin_data is not None else asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
@@ -157,7 +164,9 @@ async def _run(host, port, user, key_path, remote_cmd, known_hosts_path=None,
     except Exception as e:
         return None, f"subprocess error: {e}"
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(input=stdin_data.encode() if stdin_data is not None else None),
+            timeout=timeout)
     except asyncio.TimeoutError:
         proc.kill()
         return None, "Command timed out"
@@ -186,7 +195,7 @@ async def test_connection(cred: dict) -> tuple[bool, str, str | None]:
     host = cred["host"]
     port = int(cred.get("port", 22))
     user = cred["user"]
-    wp_path = cred.get("wp_path", "/var/www/html")
+    wp_path = shlex.quote(cred.get("wp_path", "/var/www/html"))
 
     host_key = cred.get("host_key")
     if not host_key:
@@ -206,6 +215,36 @@ async def test_connection(cred: dict) -> tuple[bool, str, str | None]:
     return True, f"WordPress {out}", host_key
 
 
+async def get_site_url(cred: dict) -> tuple[str | None, str | None]:
+    """Fetch the WordPress siteurl via WP-CLI over SSH (no REST/Application
+
+    Password needed). Used to validate + name an SSH-only connected site,
+    the same way connect_site validates over REST via /users/me.
+    Returns (site_url, error_message).
+    """
+    key = cred.get("key")
+    password = cred.get("password")
+    if not key and not password:
+        return None, "Provide either an SSH private key or SSH password."
+
+    host = cred["host"]
+    port = int(cred.get("port", 22))
+    user = cred["user"]
+    wp_path = shlex.quote(cred.get("wp_path", "/var/www/html"))
+    host_key = cred.get("host_key")
+
+    async with (_key_file(key) as kf,
+                _known_hosts_file(host_key) as khf,
+                _askpass_file(bool(password)) as askpass):
+        out, err = await _run(host, port, user, kf,
+                              f"wp option get siteurl --path={wp_path} --allow-root",
+                              known_hosts_path=khf, password=password,
+                              askpass_path=askpass)
+    if out is None:
+        return None, err or "SSH connection failed"
+    return out.strip(), None
+
+
 async def get_server_info(cred: dict) -> dict:
     """Run WP-CLI diagnostic commands and return results."""
     key = cred.get("key")
@@ -216,7 +255,7 @@ async def get_server_info(cred: dict) -> dict:
     host = cred["host"]
     port = int(cred.get("port", 22))
     user = cred["user"]
-    wp_path = cred.get("wp_path", "/var/www/html")
+    wp_path = shlex.quote(cred.get("wp_path", "/var/www/html"))
     host_key = cred.get("host_key")  # None for legacy creds predating host-key pinning
 
     commands = [
@@ -280,3 +319,152 @@ async def get_server_info(cred: dict) -> dict:
         "cron_count":          _int(cron_r),
         "db_size_mb":          (db_r[0] or "").strip(),
     }
+
+
+# ── WP-CLI publish/read path (SSH-only sites — no REST/Application Password) ──
+#
+# post_title/post_content/post_excerpt are NEVER interpolated into the shell
+# command string. Title/excerpt go through --post_title=<shlex-quoted>, and
+# content is piped over STDIN to `wp post create -`/`wp post update <id> -`
+# (WP-CLI's own documented mechanism for reading post_content from STDIN) —
+# this avoids both shell-escaping edge cases and WP-CLI's own history of
+# mangling multi-line --post_content=<...> arguments.
+
+async def _cli_session(cred: dict):
+    """Shared connection setup for the WP-CLI publish/read helpers below."""
+    key = cred.get("key")
+    password = cred.get("password")
+    if not key and not password:
+        return None, "Provide either an SSH private key or SSH password."
+    return {
+        "host": cred["host"], "port": int(cred.get("port", 22)), "user": cred["user"],
+        "wp_path": shlex.quote(cred.get("wp_path", "/var/www/html")),
+        "host_key": cred.get("host_key"), "key": key, "password": password,
+    }, None
+
+
+async def create_post_cli(cred: dict, title: str, content: str, status: str,
+                          excerpt: str = "", date: str | None = None) -> tuple[dict | None, str | None]:
+    """Create a post via `wp post create -` (content piped over STDIN). Returns (post, error)."""
+    sess, err = await _cli_session(cred)
+    if err:
+        return None, err
+    flags = [f"--post_title={shlex.quote(title)}", f"--post_status={shlex.quote(status)}", "--porcelain"]
+    if excerpt:
+        flags.append(f"--post_excerpt={shlex.quote(excerpt)}")
+    if date:
+        flags.append(f"--post_date={shlex.quote(date)}")
+    cmd = f"wp post create - --path={sess['wp_path']} --allow-root " + " ".join(flags)
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass, stdin_data=content or "")
+    if out is None:
+        return None, run_err or "SSH connection failed"
+    post_id = out.strip()
+    if not post_id.isdigit():
+        return None, f"Unexpected wp-cli output: {post_id[:200]}"
+    return {"id": post_id, "title": title, "status": status}, None
+
+
+async def update_post_cli(cred: dict, post_id: str, title: str | None, content: str | None,
+                          status: str | None, excerpt: str | None = None) -> tuple[dict | None, str | None]:
+    """Update a post via `wp post update <id> -` (content piped over STDIN when given)."""
+    sess, err = await _cli_session(cred)
+    if err:
+        return None, err
+    if not str(post_id).isdigit():
+        return None, "post_id must be a numeric WordPress post ID."
+    flags = []
+    if title is not None:
+        flags.append(f"--post_title={shlex.quote(title)}")
+    if status is not None:
+        flags.append(f"--post_status={shlex.quote(status)}")
+    if excerpt is not None:
+        flags.append(f"--post_excerpt={shlex.quote(excerpt)}")
+    stdin_data = None
+    content_flag = ""
+    if content is not None:
+        content_flag = "-"
+        stdin_data = content
+    cmd = (f"wp post update {shlex.quote(str(post_id))} {content_flag} "
+          f"--path={sess['wp_path']} --allow-root " + " ".join(flags)).strip()
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass, stdin_data=stdin_data)
+    if out is None:
+        return None, run_err or "SSH connection failed"
+    return {"id": str(post_id), "title": title, "status": status}, None
+
+
+async def list_posts_cli(cred: dict, limit: int = 20, search: str | None = None) -> tuple[list | None, str | None]:
+    """List posts via `wp post list --format=json` (read-only, no REST needed)."""
+    sess, err = await _cli_session(cred)
+    if err:
+        return None, err
+    fields = "ID,post_title,post_status,post_date"
+    flags = [f"--posts_per_page={int(limit)}", f"--fields={fields}", "--format=json"]
+    if search:
+        flags.append(f"--s={shlex.quote(search)}")
+    cmd = f"wp post list --path={sess['wp_path']} --allow-root " + " ".join(flags)
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass)
+    if out is None:
+        return None, run_err or "SSH connection failed"
+    try:
+        return json.loads(out) if out.strip() else [], None
+    except Exception:
+        return None, f"Unexpected wp-cli output: {out[:200]}"
+
+
+_SAFE_MEDIA_EXT = {"jpg", "jpeg", "png", "gif", "webp", "svg", "bmp"}
+
+
+async def upload_media_cli(cred: dict, b64_data: str, filename: str, title: str = "") -> tuple[dict | None, str | None]:
+    """Upload media via `wp media import` for SSH-only sites (no REST/Application Password).
+
+    The base64 payload is piped over STDIN and decoded server-side into a
+    throwaway temp file (`mktemp`), imported with `wp media import`, then
+    removed — the payload itself never appears as a shell argument. Only a
+    whitelisted, non-attacker-controlled file extension (guessed from
+    filename, falling back to a safe default) is used to build the mktemp
+    suffix; nothing else derived from filename/title reaches the shell
+    unescaped.
+    """
+    sess, err = await _cli_session(cred)
+    if err:
+        return None, err
+    ext = (filename.rsplit(".", 1)[-1].lower() if "." in filename else "")
+    ext = ext if ext in _SAFE_MEDIA_EXT else "img"
+    title_flag = f" --title={shlex.quote(title)}" if title else ""
+    cmd = (
+        f"tmpfile=$(mktemp /tmp/wp_upload_XXXXXX.{ext}) && "
+        f"base64 -d > \"$tmpfile\" && "
+        f"wp media import \"$tmpfile\" --path={sess['wp_path']} --allow-root --porcelain{title_flag}; "
+        f"rc=$?; rm -f \"$tmpfile\"; exit $rc"
+    )
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass, stdin_data=b64_data, timeout=60)
+    if out is None:
+        return None, run_err or "SSH connection failed"
+    media_id = out.strip()
+    if not media_id.isdigit():
+        return None, f"Unexpected wp-cli output: {media_id[:200]}"
+    return {"id": media_id, "title": title or filename}, None
