@@ -7,7 +7,11 @@ from models import (_NoParams, Site, ListContentParams, ListMediaParams,
                     ListCommentsParams, ListCustomPostsParams, Comment, WPUser, Order,
                     ServerInfo)
 import wp_cli
-from wp_client import wp_get, wp_error_message, wp_title, now_iso
+from wp_client import wp_get, wp_error_message, wp_error_code, wp_title, now_iso
+from imperal_sdk.chat.error_codes import INTERNAL, PERMISSION_DENIED
+from error_codes import (WP_SITE_NOT_CONNECTED, WP_SITE_UNREACHABLE, WP_NO_SITES_CONNECTED,
+                         WP_SSH_COMMAND_FAILED, WP_SSH_CONNECTION_FAILED, WP_SSH_NOT_CONFIGURED,
+                         WP_WOOCOMMERCE_NOT_INSTALLED)
 import storage
 
 
@@ -39,22 +43,22 @@ async def _fetch(ctx, site_id, path, params):
     """
     mode, session, err = await _resolve_site(ctx, site_id)
     if err:
-        return None, ActionResult.error(err, retryable=False)
+        return None, ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
     if mode == "ssh":
         return None, ActionResult.error(
             "This site is connected via SSH only (no REST/Application Password) — "
             "internal routing error, this path should have used the WP-CLI branch.",
-            retryable=False,
+            retryable=False, code=INTERNAL,
         )
     base_url, username, pw = session
     try:
         r = await wp_get(ctx, base_url, path, username=username, app_password=pw, params=params)
     except Exception as e:
         await ctx.log(f"{path} http error: {e}", level="error")
-        return None, ActionResult.error("Could not reach the site — try again.", retryable=True)
+        return None, ActionResult.error("Could not reach the site — try again.", retryable=True, code=WP_SITE_UNREACHABLE)
     if r.status_code != 200:
         retry = r.status_code >= 500 or r.status_code == 429
-        return None, ActionResult.error(wp_error_message(r.status_code), retryable=retry)
+        return None, ActionResult.error(wp_error_message(r.status_code), retryable=retry, code=wp_error_code(r.status_code))
     # HTTPResponse.body is already-parsed JSON (list for WP collection endpoints).
     # HTTPResponse.json() raises on list bodies, so read .body directly.
     return (r.body if isinstance(r.body, list) else []), None
@@ -111,12 +115,12 @@ async def list_posts(ctx, params: ListContentParams) -> ActionResult:
     `wp post list` over SSH (no REST call at all) for SSH-only sites."""
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
     if mode == "ssh":
         rows, cli_err = await wp_cli.list_content_cli(session, post_type="post",
                                                        limit=params.limit, search=params.search)
         if cli_err:
-            return ActionResult.error(cli_err, retryable=True)
+            return ActionResult.error(cli_err, retryable=True, code=WP_SSH_COMMAND_FAILED)
         data = [_cli_post_to_rest_shape(p) for p in rows]
     else:
         q = {"per_page": params.limit}
@@ -137,12 +141,12 @@ async def list_pages(ctx, params: ListContentParams) -> ActionResult:
     `wp post list --post_type=page` over SSH for SSH-only sites."""
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
     if mode == "ssh":
         rows, cli_err = await wp_cli.list_content_cli(session, post_type="page",
                                                        limit=params.limit, search=params.search)
         if cli_err:
-            return ActionResult.error(cli_err, retryable=True)
+            return ActionResult.error(cli_err, retryable=True, code=WP_SSH_COMMAND_FAILED)
         data = [_cli_post_to_rest_shape(p) for p in rows]
     else:
         q = {"per_page": params.limit}
@@ -163,11 +167,11 @@ async def list_media(ctx, params: ListMediaParams) -> ActionResult:
     `wp post list --post_type=attachment` over SSH for SSH-only sites."""
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
     if mode == "ssh":
         rows, cli_err = await wp_cli.list_content_cli(session, post_type="attachment", limit=params.limit)
         if cli_err:
-            return ActionResult.error(cli_err, retryable=True)
+            return ActionResult.error(cli_err, retryable=True, code=WP_SSH_COMMAND_FAILED)
         data = [_cli_media_to_rest_shape(p) for p in rows]
     else:
         data, fetch_err = await _fetch(ctx, params.site_id, "/wp-json/wp/v2/media", {"per_page": params.limit})
@@ -185,7 +189,7 @@ async def get_site_health(ctx, params: SiteIdParams) -> ActionResult:
     via REST for Application Password sites, or via WP-CLI over SSH for SSH-only sites."""
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
 
     if mode == "ssh":
         ok, msg, _ = await wp_cli.test_connection(session)
@@ -246,7 +250,7 @@ async def refresh_site(ctx, params: SiteIdParams) -> ActionResult:
     update stored status, and refresh the overview panel."""
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
     record = await storage.get_site_record(ctx, params.site_id) or {}
 
     if mode == "ssh":
@@ -262,7 +266,7 @@ async def refresh_site(ctx, params: SiteIdParams) -> ActionResult:
             status = "connected" if 200 <= r.status_code < 300 else "error"
         except Exception as e:
             await ctx.log(f"refresh_site http error: {e}", level="error")
-            return ActionResult.error("Could not reach the site — try again.", retryable=True)
+            return ActionResult.error("Could not reach the site — try again.", retryable=True, code=WP_SITE_UNREACHABLE)
 
     await storage.save_site_record(ctx, {**record, "status": status, "last_checked": now_iso()})
     await storage.clear_content_cache(ctx, params.site_id)
@@ -291,7 +295,7 @@ async def refresh_all_sites(ctx, params: _NoParams) -> ActionResult:
     on how each is connected), update stored statuses, clear content caches."""
     rows = await storage.list_site_records(ctx)
     if not rows:
-        return ActionResult.error("No sites connected.", retryable=False)
+        return ActionResult.error("No sites connected.", retryable=False, code=WP_NO_SITES_CONNECTED)
 
     async def _check(record):
         site_id = record["id"]
@@ -340,12 +344,12 @@ async def list_comments(ctx, params: ListCommentsParams) -> ActionResult:
     `wp comment list` over SSH for SSH-only sites."""
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
     if mode == "ssh":
         cli_status = _REST_TO_CLI_COMMENT_STATUS.get(params.status, params.status)
         rows, cli_err = await wp_cli.list_comments_cli(session, status=cli_status, limit=params.limit)
         if cli_err:
-            return ActionResult.error(cli_err, retryable=True)
+            return ActionResult.error(cli_err, retryable=True, code=WP_SSH_COMMAND_FAILED)
         data = [_cli_comment_to_rest_shape(c) for c in rows]
     else:
         q: dict = {"per_page": params.limit, "orderby": "date", "order": "desc"}
@@ -386,13 +390,13 @@ async def list_scheduled(ctx, params: ListContentParams) -> ActionResult:
     or via `wp post list --post_status=future` over SSH for SSH-only sites."""
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
     if mode == "ssh":
         rows, cli_err = await wp_cli.list_content_cli(session, post_type="post", limit=params.limit,
                                                        search=params.search, status="future",
                                                        orderby="date", order="asc")
         if cli_err:
-            return ActionResult.error(cli_err, retryable=True)
+            return ActionResult.error(cli_err, retryable=True, code=WP_SSH_COMMAND_FAILED)
         data = [_cli_post_to_rest_shape(p) for p in rows]
     else:
         q: dict = {"per_page": params.limit, "status": "future", "orderby": "date", "order": "asc"}
@@ -419,11 +423,11 @@ async def list_users(ctx, params: ListContentParams) -> ActionResult:
     `wp user list` over SSH for SSH-only sites."""
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
     if mode == "ssh":
         rows, cli_err = await wp_cli.list_users_cli(session, limit=params.limit, search=params.search)
         if cli_err:
-            return ActionResult.error(cli_err, retryable=True)
+            return ActionResult.error(cli_err, retryable=True, code=WP_SSH_COMMAND_FAILED)
         data = [_cli_user_to_rest_shape(u) for u in rows]
     else:
         q: dict = {"per_page": params.limit, "orderby": "registered_date", "order": "desc"}
@@ -457,11 +461,12 @@ async def list_orders(ctx, params: ListMediaParams) -> ActionResult:
     `wp wc shop_order list` over SSH for SSH-only sites."""
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
     if mode == "ssh":
         rows, cli_err = await wp_cli.list_orders_cli(session, limit=params.limit)
         if cli_err:
-            return ActionResult.error(cli_err, retryable=False)
+            code = WP_WOOCOMMERCE_NOT_INSTALLED if "WooCommerce is not installed" in cli_err else WP_SSH_COMMAND_FAILED
+            return ActionResult.error(cli_err, retryable=False, code=code)
         data = [_cli_order_to_rest_shape(o) for o in rows]
     else:
         base_url, username, pw = session
@@ -471,16 +476,18 @@ async def list_orders(ctx, params: ListMediaParams) -> ActionResult:
                              params={"per_page": params.limit, "orderby": "date", "order": "desc"})
         except Exception as e:
             await ctx.log(f"list_orders http error: {e}", level="error")
-            return ActionResult.error("Could not reach the site.", retryable=True)
+            return ActionResult.error("Could not reach the site.", retryable=True, code=WP_SITE_UNREACHABLE)
         if r.status_code == 404:
-            return ActionResult.error("WooCommerce is not installed on this site.", retryable=False)
+            return ActionResult.error("WooCommerce is not installed on this site.", retryable=False,
+                                      code=WP_WOOCOMMERCE_NOT_INSTALLED)
         if r.status_code in (401, 403):
             return ActionResult.error(
                 "WooCommerce requires additional permissions — ensure the Application Password user has shop manager or admin role.",
-                retryable=False,
+                retryable=False, code=PERMISSION_DENIED,
             )
         if r.status_code != 200 or not isinstance(r.body, list):
-            return ActionResult.error(wp_error_message(r.status_code), retryable=r.status_code >= 500)
+            return ActionResult.error(wp_error_message(r.status_code), retryable=r.status_code >= 500,
+                                      code=wp_error_code(r.status_code))
         data = r.body
     items = [
         Order(
@@ -508,12 +515,12 @@ async def list_custom_posts(ctx, params: ListCustomPostsParams) -> ActionResult:
     sites, or via `wp post list --post_type=<type>` over SSH for SSH-only sites."""
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
     if mode == "ssh":
         rows, cli_err = await wp_cli.list_content_cli(session, post_type=params.post_type,
                                                        limit=params.limit, search=params.search)
         if cli_err:
-            return ActionResult.error(cli_err, retryable=True)
+            return ActionResult.error(cli_err, retryable=True, code=WP_SSH_COMMAND_FAILED)
         data = [_cli_post_to_rest_shape(p) for p in rows]
     else:
         q: dict = {"per_page": params.limit, "orderby": "date", "order": "desc"}
@@ -543,18 +550,20 @@ async def get_server_info(ctx, params: SiteIdParams) -> ActionResult:
     cred = await storage.get_ssh_cred(ctx, params.site_id)
     if not cred:
         return ActionResult.error(
-            "SSH not configured for this site. Use add_ssh first.", retryable=False
+            "SSH not configured for this site. Use add_ssh first.", retryable=False,
+            code=WP_SSH_NOT_CONFIGURED,
         )
     try:
         info = await wp_cli.get_server_info(cred)
     except Exception as e:
         await ctx.log(f"get_server_info: {e}", level="error")
-        return ActionResult.error("SSH connection failed — check credentials.", retryable=True)
+        return ActionResult.error("SSH connection failed — check credentials.", retryable=True,
+                                  code=WP_SSH_CONNECTION_FAILED)
 
     if "error" in info:
         await storage.save_site_record(ctx, {**record, "ssh_error": info["error"]})
         return ActionResult.error(f"SSH/WP-CLI error: {info['error']}", retryable=True,
-                                  refresh_panels=["center"])
+                                  code=WP_SSH_COMMAND_FAILED, refresh_panels=["center"])
 
     result = ServerInfo(
         id=params.site_id,
@@ -577,7 +586,7 @@ async def get_server_info(ctx, params: SiteIdParams) -> ActionResult:
     if not result.wp_version:
         return ActionResult.error(
             "SSH connected but WP-CLI returned no data — check the WordPress path and WP-CLI installation.",
-            retryable=True,
+            retryable=True, code=WP_SSH_COMMAND_FAILED,
         )
 
     await storage.save_site_record(ctx, {

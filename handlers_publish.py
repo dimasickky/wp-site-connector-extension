@@ -3,7 +3,9 @@ import base64
 from app import chat
 from imperal_sdk import ActionResult
 from models import CreatePostParams, UpdatePostParams, UploadMediaParams, Post, MediaItem
-from wp_client import wp_post, wp_upload_media, guess_image_content_type, wp_error_message, wp_title
+from wp_client import wp_post, wp_upload_media, guess_image_content_type, wp_error_message, wp_error_code, wp_title
+from imperal_sdk.chat.error_codes import VALIDATION_MISSING_FIELD, VALIDATION_TYPE_ERROR, INTERNAL
+from error_codes import WP_SITE_UNREACHABLE, WP_POST_NOT_FOUND, WP_SITE_NOT_CONNECTED
 import storage
 import wp_cli
 
@@ -31,24 +33,25 @@ async def create_post(ctx, params: CreatePostParams) -> ActionResult:
     if params.status not in _VALID_STATUSES:
         return ActionResult.error(
             f"Invalid status '{params.status}' — use draft, publish, pending, or future.",
-            retryable=False,
+            retryable=False, code=VALIDATION_MISSING_FIELD,
         )
     if params.status == "future" and not params.date:
         return ActionResult.error(
             "status='future' requires a date (ISO 8601, e.g. 2026-08-01T09:00:00).",
-            retryable=False,
+            retryable=False, code=VALIDATION_MISSING_FIELD,
         )
 
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
 
     if mode == "ssh":
         result, cli_err = await wp_cli.create_post_cli(
             session, title=params.title, content=params.content, status=params.status,
             excerpt=params.excerpt, date=params.date, slug=params.slug)
         if cli_err:
-            return ActionResult.error(f"WP-CLI publish failed: {cli_err}", retryable=True)
+            return ActionResult.error(f"WP-CLI publish failed: {cli_err}", retryable=True,
+                                      code=INTERNAL)
         post = Post(id=result["id"], title=result["title"], kind="wp_post",
                     status=result["status"], link="", date=params.date)
         icon = "✅" if post.status == "publish" else "📝"
@@ -85,11 +88,13 @@ async def create_post(ctx, params: CreatePostParams) -> ActionResult:
                           username=username, app_password=pw, json_body=body)
     except Exception as e:
         await ctx.log(f"create_post http error: {e}", level="error")
-        return ActionResult.error("Could not reach the site — try again.", retryable=True)
+        return ActionResult.error("Could not reach the site — try again.", retryable=True,
+                                  code=WP_SITE_UNREACHABLE)
 
     if not (200 <= r.status_code < 300):
         return ActionResult.error(wp_error_message(r.status_code),
-                                  retryable=r.status_code >= 500 or r.status_code == 429)
+                                  retryable=r.status_code >= 500 or r.status_code == 429,
+                                  code=wp_error_code(r.status_code))
 
     data = r.body if isinstance(r.body, dict) else {}
     post = Post(id=str(data.get("id", "")), title=wp_title(data) or params.title, kind="wp_post",
@@ -121,12 +126,12 @@ async def update_post(ctx, params: UpdatePostParams) -> ActionResult:
     if params.status is not None and params.status not in _VALID_STATUSES:
         return ActionResult.error(
             f"Invalid status '{params.status}' — use draft, publish, pending, or future.",
-            retryable=False,
+            retryable=False, code=VALIDATION_MISSING_FIELD,
         )
 
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
 
     if mode == "ssh":
         if (params.title is None and params.content is None and params.status is None
@@ -134,7 +139,7 @@ async def update_post(ctx, params: UpdatePostParams) -> ActionResult:
                 and params.meta_description is None and params.focus_keyword is None):
             return ActionResult.error(
                 "No fields to update — pass at least one of title/content/status/excerpt/slug/meta_description/focus_keyword.",
-                retryable=False)
+                retryable=False, code=VALIDATION_MISSING_FIELD)
         summary = None
         if (params.title is not None or params.content is not None or params.status is not None
                 or params.excerpt is not None or params.slug is not None):
@@ -142,7 +147,8 @@ async def update_post(ctx, params: UpdatePostParams) -> ActionResult:
                 session, post_id=params.post_id, title=params.title, content=params.content,
                 status=params.status, excerpt=params.excerpt, slug=params.slug)
             if cli_err:
-                return ActionResult.error(f"WP-CLI update failed: {cli_err}", retryable=True)
+                return ActionResult.error(f"WP-CLI update failed: {cli_err}", retryable=True,
+                                          code=INTERNAL)
             summary = f"✅ Updated post {result['id']} via SSH"
             post = Post(id=result["id"], title=result["title"] or "", kind="wp_post",
                         status=result["status"] or "", link="", date=None)
@@ -181,22 +187,24 @@ async def update_post(ctx, params: UpdatePostParams) -> ActionResult:
                 "meta_description/focus_keyword can't be set on this site — it's connected via "
                 "Application Password/REST, and Rank Math doesn't expose those fields to the REST "
                 "API. Connect this site over SSH instead, or pass another field to update too.",
-                retryable=False)
+                retryable=False, code=VALIDATION_MISSING_FIELD)
         return ActionResult.error("No fields to update — pass at least one of title/content/status/excerpt/date/slug/featured_media_id.",
-                                  retryable=False)
+                                  retryable=False, code=VALIDATION_MISSING_FIELD)
 
     try:
         r = await wp_post(ctx, base_url, f"/wp-json/wp/v2/posts/{params.post_id}",
                           username=username, app_password=pw, json_body=body)
     except Exception as e:
         await ctx.log(f"update_post http error: {e}", level="error")
-        return ActionResult.error("Could not reach the site — try again.", retryable=True)
+        return ActionResult.error("Could not reach the site — try again.", retryable=True,
+                                  code=WP_SITE_UNREACHABLE)
 
     if r.status_code == 404:
-        return ActionResult.error("Post not found on this site.", retryable=False)
+        return ActionResult.error("Post not found on this site.", retryable=False, code=WP_POST_NOT_FOUND)
     if not (200 <= r.status_code < 300):
         return ActionResult.error(wp_error_message(r.status_code),
-                                  retryable=r.status_code >= 500 or r.status_code == 429)
+                                  retryable=r.status_code >= 500 or r.status_code == 429,
+                                  code=wp_error_code(r.status_code))
 
     data = r.body if isinstance(r.body, dict) else {}
     post = Post(id=str(data.get("id", params.post_id)), title=wp_title(data), kind="wp_post",
@@ -245,27 +253,30 @@ async def upload_media(ctx, params: UploadMediaParams) -> ActionResult:
     Password sites, or via `wp media import` over SSH for SSH-only sites."""
     b64, filename, upload_content_type = _extract_b64(params.files)
     if not b64:
-        return ActionResult.error("No file provided — attach an image to upload.", retryable=False)
+        return ActionResult.error("No file provided — attach an image to upload.", retryable=False,
+                                  code=VALIDATION_MISSING_FIELD)
 
     try:
         file_bytes = base64.b64decode(b64)
     except Exception:
-        return ActionResult.error("Invalid file data (base64 decode failed).", retryable=False)
+        return ActionResult.error("Invalid file data (base64 decode failed).", retryable=False,
+                                  code=VALIDATION_TYPE_ERROR)
 
     if not file_bytes:
-        return ActionResult.error("Uploaded file is empty.", retryable=False)
+        return ActionResult.error("Uploaded file is empty.", retryable=False, code=VALIDATION_MISSING_FIELD)
 
     content_type = guess_image_content_type(filename, upload_content_type)
 
     mode, session, err = await _resolve_site(ctx, params.site_id)
     if err:
-        return ActionResult.error(err, retryable=False)
+        return ActionResult.error(err, retryable=False, code=WP_SITE_NOT_CONNECTED)
 
     if mode == "ssh":
         result, cli_err = await wp_cli.upload_media_cli(
             session, b64_data=b64, filename=filename, title=params.title or "")
         if cli_err:
-            return ActionResult.error(f"WP-CLI media upload failed: {cli_err}", retryable=True)
+            return ActionResult.error(f"WP-CLI media upload failed: {cli_err}", retryable=True,
+                                      code=INTERNAL)
         media = MediaItem(id=result["id"], title=result["title"], kind="wp_media",
                           url=result.get("url", ""), mime_type=content_type)
         return ActionResult.success(
@@ -278,17 +289,19 @@ async def upload_media(ctx, params: UploadMediaParams) -> ActionResult:
                                   file_bytes=file_bytes, filename=filename, content_type=content_type)
     except Exception as e:
         await ctx.log(f"upload_media http error: {e}", level="error")
-        return ActionResult.error("Could not reach the site — try again.", retryable=True)
+        return ActionResult.error("Could not reach the site — try again.", retryable=True,
+                                  code=WP_SITE_UNREACHABLE)
 
     if not (200 <= r.status_code < 300):
         return ActionResult.error(wp_error_message(r.status_code),
-                                  retryable=r.status_code >= 500 or r.status_code == 429)
+                                  retryable=r.status_code >= 500 or r.status_code == 429,
+                                  code=wp_error_code(r.status_code))
 
     data = r.body if isinstance(r.body, dict) else {}
     media_id = data.get("id")
     if media_id is None:
         return ActionResult.error("WordPress accepted the upload but returned no media id — try again.",
-                                  retryable=True)
+                                  retryable=True, code=INTERNAL)
 
     media = MediaItem(id=str(media_id), title=wp_title(data) or filename, kind="wp_media",
                       url=data.get("source_url", ""), mime_type=data.get("mime_type", content_type))

@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.7.0 — 2026-07-18 — SDK 5.9.11 + structured error codes on every error path
+
+### Changed
+- Bumped `imperal-sdk` pin `5.9.9` → `5.9.11` (no breaking changes affect this
+  extension — verified full test suite green under the new pin).
+- Added missing `.python-version` (`3.11`) and `.nextcloudignore` (matching
+  sibling extensions sql-db/notes/tasks).
+- Every `ActionResult.error(...)` call site now carries a structured `code=`
+  (SDK 5.9.7+, validator rule V32) instead of relying on prose alone:
+  platform taxonomy codes (`imperal_sdk.chat.error_codes`) where they fit
+  (`VALIDATION_MISSING_FIELD`, `VALIDATION_TYPE_ERROR`, `PERMISSION_DENIED`,
+  `RATE_LIMITED`, `BACKEND_5XX`, `INTERNAL`), plus a small new app-declared
+  set in `error_codes.py` for WordPress/SSH-specific failures that the
+  platform taxonomy doesn't cover (`WP_SITE_NOT_CONNECTED`,
+  `WP_SITE_UNREACHABLE`, `WP_SSH_CONNECTION_FAILED`, `WP_SSH_COMMAND_FAILED`,
+  `WP_SSH_KEY_INVALID`, `WP_SSH_NOT_CONFIGURED`, `WP_POST_NOT_FOUND`,
+  `WP_WOOCOMMERCE_NOT_INSTALLED`, `WP_NO_SITES_CONNECTED`). A new
+  `wp_client.wp_error_code()` maps REST HTTP statuses to a code, pairing
+  with the existing `wp_error_message()`.
+- No behavior change for users — this is diagnosability-only (self-diagnosis
+  and honest narration now key off a stable code instead of parsing prose).
+
+159/159 tests passing. imperal validate: 0 errors, 0 warnings (V32 clear).
+
 ## v0.6.5 — 2026-07-18 — Fix: SSH media uploads had no URL, so images couldn't be embedded in post content
 
 ### Fixed

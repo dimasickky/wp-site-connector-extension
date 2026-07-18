@@ -45,6 +45,19 @@ def wp_error_message(status_code: int) -> str:
     return f"WordPress request failed (HTTP {status_code})."
 
 
+def wp_error_code(status_code: int) -> str:
+    """Map a WordPress REST HTTP status to a platform structured error code
+    (imperal_sdk.chat.error_codes) — pairs with wp_error_message() so every
+    REST failure carries both a prose message and a stable code."""
+    if status_code in (401, 403):
+        return "PERMISSION_DENIED"
+    if status_code == 429:
+        return "RATE_LIMITED"
+    if 500 <= status_code < 600:
+        return "BACKEND_5XX"
+    return "BACKEND_5XX" if status_code >= 500 else "INTERNAL"
+
+
 async def wp_get(ctx, base_url, path, *, username, app_password, params=None):
     headers = basic_auth_header(username, app_password)
     return await ctx.http.get(f"{base_url}{path}", headers=headers, params=params)
