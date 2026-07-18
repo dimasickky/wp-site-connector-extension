@@ -598,7 +598,19 @@ async def upload_media_cli(cred: dict, b64_data: str, filename: str, title: str 
     media_id = out.strip()
     if not media_id.isdigit():
         return None, f"Unexpected wp-cli output: {media_id[:200]}"
-    return {"id": media_id, "title": title or filename}, None
+
+    # Media items are WordPress posts under the hood (post_type=attachment),
+    # so their public file URL lives in `guid` — fetch it so the caller can
+    # embed the image in post content (not just reference it by id).
+    url_cmd = f"wp post get {media_id} --field=guid --path={sess['wp_path']} --allow-root"
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        url_out, _ = await _run(sess["host"], sess["port"], sess["user"], kf, url_cmd,
+                                known_hosts_path=khf, password=sess["password"],
+                                askpass_path=askpass)
+    media_url = url_out.strip() if url_out else ""
+    return {"id": media_id, "title": title or filename, "url": media_url}, None
 
 
 async def list_comments_cli(cred: dict, status: str = "hold", limit: int = 20

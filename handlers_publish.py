@@ -267,7 +267,7 @@ async def upload_media(ctx, params: UploadMediaParams) -> ActionResult:
         if cli_err:
             return ActionResult.error(f"WP-CLI media upload failed: {cli_err}", retryable=True)
         media = MediaItem(id=result["id"], title=result["title"], kind="wp_media",
-                          url="", mime_type=content_type)
+                          url=result.get("url", ""), mime_type=content_type)
         return ActionResult.success(
             media, summary=f"🖼️ Uploaded \"{media.title}\" via SSH (media_id={media.id})",
             refresh_panels=["center"])

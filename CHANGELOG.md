@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.6.5 — 2026-07-18 — Fix: SSH media uploads had no URL, so images couldn't be embedded in post content
+
+### Fixed
+- `upload_media` on an SSH-only site returned a media id but an empty `url` —
+  fine for setting a post's featured image (by id), but unusable for
+  embedding the image inside the post body (which needs a real `<img src>`).
+- `wp_cli.upload_media_cli` now runs a follow-up `wp post get <id> --field=guid`
+  after the import to fetch the file's real public URL (media items are
+  WordPress posts under the hood, so `guid` holds it) — SSH uploads now
+  return the same usable `url` field REST uploads always did.
+
 ## v0.6.4 — 2026-07-18 — Fix: SSH-only sites couldn't read content, only publish to it
 
 ### Fixed

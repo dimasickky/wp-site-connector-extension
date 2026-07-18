@@ -5,14 +5,21 @@ import wp_cli
 
 
 async def _capture_run(monkeypatch, fake_output="42", fake_err=None):
-    """Patch wp_cli._run to capture (host, port, user, key_path, remote_cmd, stdin_data)."""
-    captured = {}
+    """Patch wp_cli._run to capture (host, port, user, key_path, remote_cmd, stdin_data).
+
+    Some helpers (upload_media_cli) issue more than one _run call — `captured`
+    reflects the LAST call for backward compatibility with single-call tests,
+    plus `remote_cmds`/`stdin_datas` lists holding every call in order.
+    """
+    captured = {"remote_cmds": [], "stdin_datas": []}
 
     async def _fake_run(host, port, user, key_path, remote_cmd, known_hosts_path=None,
                         password=None, askpass_path=None, timeout=None, stdin_data=None):
         captured["remote_cmd"] = remote_cmd
         captured["stdin_data"] = stdin_data
         captured["host"] = host
+        captured["remote_cmds"].append(remote_cmd)
+        captured["stdin_datas"].append(stdin_data)
         if fake_err:
             return None, fake_err
         return fake_output, None
@@ -130,6 +137,30 @@ async def test_upload_media_cli_pipes_b64_over_stdin(monkeypatch):
     assert media["id"] == "99"
 
 
+async def test_upload_media_cli_fetches_real_url_after_import(monkeypatch):
+    """After `wp media import`, upload_media_cli fetches the file's real URL via
+    `wp post get <id> --field=guid` — needed to embed the image in post content,
+    not just reference it by id (this was previously always blank on SSH sites)."""
+    calls = {"n": 0}
+
+    async def _fake_run(host, port, user, key_path, remote_cmd, known_hosts_path=None,
+                        password=None, askpass_path=None, timeout=None, stdin_data=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            assert "wp media import" in remote_cmd
+            return "99", None
+        assert remote_cmd == "wp post get 99 --field=guid --path=/var/www/html --allow-root"
+        return "https://ssh-site.example/wp-content/uploads/2026/07/photo.jpg", None
+
+    monkeypatch.setattr(wp_cli, "_run", _fake_run)
+    media, err = await wp_cli.upload_media_cli(_CRED, b64_data="ZmFrZS1kYXRh",
+                                               filename="photo.jpg", title="A photo")
+    assert err is None
+    assert media["id"] == "99"
+    assert media["url"] == "https://ssh-site.example/wp-content/uploads/2026/07/photo.jpg"
+    assert calls["n"] == 2
+
+
 # ── Read-side WP-CLI helpers (list_content_cli, list_comments_cli, list_users_cli,
 # list_orders_cli, count_posts_cli) — the functions that make SSH-only sites
 # actually READABLE, not just writable. ──────────────────────────────────────
@@ -218,8 +249,9 @@ async def test_upload_media_cli_rejects_unsafe_extension_falls_back(monkeypatch)
     captured = await _capture_run(monkeypatch, fake_output="99")
     await wp_cli.upload_media_cli(_CRED, b64_data="ZGF0YQ==", filename="evil.php", title="")
     # .php must never become the mktemp suffix — falls back to a safe generic one.
-    assert ".php" not in captured["remote_cmd"]
-    assert ".img" in captured["remote_cmd"]
+    upload_cmd = captured["remote_cmds"][0]
+    assert ".php" not in upload_cmd
+    assert ".img" in upload_cmd
 
 
 async def test_upload_media_cli_rejects_non_numeric_output(monkeypatch):
