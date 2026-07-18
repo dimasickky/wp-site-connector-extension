@@ -1,5 +1,92 @@
 # Changelog
 
+## v0.9.0 — 2026-07-19 — `manage_plugin`, `purge_cache`, `run_wp_cli`: WP-CLI roadmap complete
+
+### Added
+- **`manage_plugin(site_id, plugin, action)`** — `activate`/`deactivate`/`update` a
+  plugin via `wp plugin <action> <slug>` over SSH. `plugin` is validated against
+  the site's **live** `list_plugins` result (never a hardcoded/guessed slug) —
+  an unknown plugin gets a clear error instead of a blind command. `deactivate`
+  is `action_type="destructive"` and carries **its own explicit two-step
+  confirm-flow** (`confirm: bool` param) — the first call previews what would
+  happen and changes nothing; only a second call with `confirm=true` executes.
+  This does NOT rely on the platform's confirmation gate: confirmed in the SDK
+  (`guards.py`/`tool_def.py`) that the gate is account-level, defaults OFF, and
+  cannot be forced on by an extension — see `extensions/wp-site-connector.md`.
+  `activate`/`update` self-confirm the same way but as `action_type="write"`.
+- **`purge_cache(site_id, scope="all"|"front")`** — `action_type="write"`. Detects
+  a supported cache plugin (LiteSpeed Cache) from the site's live plugin list
+  before purging via `wp litespeed-purge <scope>` — reports clearly when no
+  supported cache plugin is active/installed instead of a silent no-op.
+- **`run_wp_cli(site_id, namespace, args, confirm)`** — generalized, namespace-
+  allowlisted WP-CLI executor for anything not covered by the wrappers above
+  (WooCommerce `wp wc`, ACF, Yoast, any third-party plugin's own namespace —
+  works without extra code as long as the namespace is allowlisted). Three
+  independent security layers, all in the new pure/unit-tested
+  `wp_cli_policy.py` module: (1) namespace allowlist/blocklist — unknown
+  namespaces are rejected, not just the hardcoded-dangerous ones (`eval`,
+  `db`, `config`, `shell`...); (2) subcommand-level destructive classification
+  **independent of namespace** — e.g. `user set-role`/`meta update
+  wp_capabilities`/`*-delete --force` are forced destructive even though their
+  namespace alone would only imply "write"; (3) global WP-CLI/SSH flag
+  stripping (`--path=`, `--url=`, `--ssh=`, `--allow-root`, `--skip-plugins`,
+  `--skip-themes`, `--skip-packages`) — never taken from user args, always
+  set by us, closing a shared-hosting cross-site redirection risk. Own
+  explicit confirm-flow identical in shape to `manage_plugin`'s. Rejected
+  calls (bad namespace, bad subcommand, missing confirm) are audit-logged via
+  `ctx.log` the same as successful ones — a security log that only records
+  what succeeded would miss the interesting part.
+- New `wp_cli_policy.py` — pure, side-effect-free security-logic module (no
+  SSH, no I/O) so the namespace/subcommand/flag rules can be unit-tested in
+  complete isolation from the transport layer. New `handlers_wp_cli.py`
+  wiring the three new `@chat.function`s on top of the existing SSH
+  transport helpers (`_cli_session`/`_run`/`_key_file`, unchanged).
+- 47 new tests: 32 pure policy tests (`test_wp_cli_policy.py`) + 15
+  handler-level tests (`test_wp_cli_handlers.py`) covering the confirm-flow,
+  live-plugin validation, and that policy-rejected calls never reach SSH.
+  **209/209 tests passing.** `imperal validate .` → 0 errors, 0 warnings,
+  1 pre-existing info (V12, same as before — not new).
+
+### Context
+Completes the four-tool WP-CLI roadmap from `extensions/wp-site-connector.md`
+(2026-07-18 spec + counter-review): `list_plugins` (v0.8.0) → `manage_plugin`
+→ `purge_cache` → `run_wp_cli` (this release, all three). Plugin
+install/delete and WordPress core update remain deliberately out of scope —
+higher-risk operations to be scoped separately, per that same spec.
+
+## v0.8.0 — 2026-07-19 — `list_plugins`: first step of the WP-CLI plugin-management roadmap
+
+### Added
+- `list_plugins(site_id)` — lists installed plugins on an SSH-connected site
+  via `wp plugin list --format=json`: name, active/inactive status, version,
+  and target version if an update is available. `action_type="read"`, no
+  side effects, no confirm-flow needed.
+- SSH-only by design: WordPress core's REST API has no plugin-listing
+  endpoint without installing a companion REST-exposing plugin, so (unlike
+  `list_posts`/`list_comments`/etc) there is no REST fallback path here —
+  sites without SSH configured (`add_ssh`) get a clear
+  `WP_SSH_NOT_CONFIGURED` error instead of a silent empty list.
+- New `Plugin` entity model (`models.py`) and `list_plugins_cli` (`wp_cli.py`),
+  following the exact pattern of the existing `list_orders_cli`/
+  `list_comments_cli` — reuses the SSH transport (`_cli_session`, `_run`,
+  `_key_file` etc.) as-is, no changes to the transport layer.
+- 3 new tests in `tests/test_read_ssh.py` (happy path with mixed
+  up-to-date/update-available plugins, wp-cli error surfacing, missing-SSH
+  error path). 162/162 tests passing.
+
+### Context
+First of four planned tools for deeper WP-CLI integration — see
+`extensions/wp-site-connector.md` (2026-07-18 spec) for the full plan:
+`list_plugins` (this release) → `manage_plugin` (activate/deactivate/update,
+with its own explicit confirm-flow — the platform's confirmation gate is
+account-level and cannot be forced by an extension) → `purge_cache` →
+`run_wp_cli` (generalized namespace-allowlisted executor, last, with
+subcommand-level destructive triggers and global-flag stripping built in
+from v1, not retrofitted).
+
+imperal validate: 0 errors, 0 warnings, 1 info (pre-existing V12 note about
+no `@ext.on_install`, unrelated to this change).
+
 ## v0.7.0 — 2026-07-18 — SDK 5.9.11 + structured error codes on every error path
 
 ### Changed

@@ -137,6 +137,50 @@ class Order(sdl.Entity):
     currency: str = ""
 
 
+class Plugin(sdl.Entity):
+    version: str = ""
+    update_available: str = ""  # target version if an update is available, else ""
+
+
+class ManagePluginParams(BaseModel):
+    site_id: str = Field(description="Site id from a previous list_sites call — never invent it")
+    plugin: str = Field(description="Plugin slug exactly as it appears in list_plugins (e.g. 'litespeed-cache') — validated against the site's live plugin list, never a hardcoded name")
+    action: str = Field(description="'activate', 'deactivate', or 'update'")
+    confirm: bool = Field(default=False, description="Must be explicitly set true to actually perform 'deactivate' (destructive). First call without confirm=true only previews what would happen and does nothing.")
+
+
+class PurgeCacheParams(BaseModel):
+    site_id: str = Field(description="Site id from a previous list_sites call — never invent it")
+    scope: str = Field(default="all", description="'all' (whole site cache) or 'front' (front page only)")
+
+
+class RunWpCliParams(BaseModel):
+    site_id: str = Field(description="Site id from a previous list_sites call — never invent it")
+    namespace: str = Field(description="WP-CLI command namespace, e.g. 'plugin', 'transient', 'litespeed-purge'. Must be on the server-side allowlist — arbitrary/unknown namespaces and dangerous ones (eval, db, config, shell) are always rejected.")
+    args: list[str] = Field(default_factory=list, description="Remaining WP-CLI arguments after the namespace, e.g. ['list', '--status=active']. Global flags like --path=/--url=/--ssh=/--allow-root are stripped automatically — never include them.")
+    confirm: bool = Field(default=False, description="Must be explicitly set true to actually perform a write/destructive call. First call without confirm=true only previews what would happen and does nothing.")
+
+
+class PluginActionResult(sdl.Entity):
+    plugin: str = ""
+    action: str = ""
+    needs_confirmation: bool = False
+    output: str = ""
+
+
+class CacheActionResult(sdl.Entity):
+    scope: str = ""
+    cache_plugin: str = ""
+    output: str = ""
+
+
+class WpCliResult(sdl.Entity):
+    namespace: str = ""
+    classification: str = ""  # "read" | "write" | "destructive"
+    needs_confirmation: bool = False
+    output: str = ""
+
+
 class ServerInfo(sdl.Entity):
     wp_version: str = ""
     php_version: str = ""

@@ -227,6 +227,50 @@ async def test_list_custom_posts_uses_wp_cli_with_given_post_type(monkeypatch):
     assert r.data.items[0].title == "Widget"
 
 
+async def test_list_plugins_uses_wp_cli(monkeypatch):
+    ctx = await _ssh_ctx()
+
+    async def _fake_list_plugins_cli(cred):
+        return [
+            {"name": "rank-math-seo", "status": "active", "version": "25.1", "update": "none", "update_version": ""},
+            {"name": "litespeed-cache", "status": "active", "version": "6.5", "update": "available", "update_version": "6.6"},
+        ], None
+
+    monkeypatch.setattr(wp_cli, "list_plugins_cli", _fake_list_plugins_cli)
+    r = await hr.list_plugins(ctx, SiteIdParams(site_id="ssh-site"))
+    assert r.status == "success"
+    assert len(r.data.items) == 2
+    assert r.data.items[0].title == "rank-math-seo"
+    assert r.data.items[0].status == "active"
+    assert r.data.items[0].update_available == ""
+    assert r.data.items[1].update_available == "6.6"
+
+
+async def test_list_plugins_wp_cli_error_surfaces(monkeypatch):
+    ctx = await _ssh_ctx()
+
+    async def _fake_list_plugins_cli(cred):
+        return None, "SSH connection failed"
+
+    monkeypatch.setattr(wp_cli, "list_plugins_cli", _fake_list_plugins_cli)
+    r = await hr.list_plugins(ctx, SiteIdParams(site_id="ssh-site"))
+    assert r.status == "error"
+    assert "SSH connection failed" in r.error
+
+
+async def test_list_plugins_requires_ssh_configured():
+    """No SSH cred stored at all (e.g. Application-Password-only site) — must fail
+    with a clear, actionable message, never crash trying to reach REST (there is
+    no REST fallback for plugin listing)."""
+    from imperal_sdk.testing import MockContext
+    ctx = MockContext()
+    await storage.save_site_record(ctx, {"id": "rest-only", "name": "REST Site", "url": "https://x",
+                                        "username": "admin", "status": "connected"})
+    r = await hr.list_plugins(ctx, SiteIdParams(site_id="rest-only"))
+    assert r.status == "error"
+    assert "SSH not configured" in r.error
+
+
 async def test_ssh_site_still_errors_cleanly_if_ssh_cred_missing():
     """Site record says auth_mode=ssh but the credential doc is gone (edge case) —
     must fail with a clear message, never crash or silently fall through to REST."""

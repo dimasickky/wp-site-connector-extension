@@ -5,7 +5,7 @@ from app import chat
 from models import (_NoParams, Site, ListContentParams, ListMediaParams,
                     Post, Page, MediaItem, SiteIdParams, SiteHealth, RefreshAllResult,
                     ListCommentsParams, ListCustomPostsParams, Comment, WPUser, Order,
-                    ServerInfo)
+                    ServerInfo, Plugin)
 import wp_cli
 from wp_client import wp_get, wp_error_message, wp_error_code, wp_title, now_iso
 from imperal_sdk.chat.error_codes import INTERNAL, PERMISSION_DENIED
@@ -502,6 +502,40 @@ async def list_orders(ctx, params: ListMediaParams) -> ActionResult:
     ]
     return ActionResult.success(sdl.EntityList[Order](items=items),
                                 summary=f"{len(items)} order(s)")
+
+
+@chat.function(
+    "list_plugins",
+    description="List installed plugins on a connected WordPress site — name, active/inactive status, version, and whether an update is available. Requires SSH access (add_ssh) since WordPress core doesn't expose plugin management over REST.",
+    action_type="read",
+    data_model=sdl.EntityList[Plugin],
+)
+async def list_plugins(ctx, params: SiteIdParams) -> ActionResult:
+    """List plugins via `wp plugin list` over SSH. SSH-only — WordPress core's
+    REST API has no plugin-listing endpoint without a companion plugin, so
+    there is no REST fallback path here (unlike list_posts/list_comments/etc)."""
+    cred = await storage.get_ssh_cred(ctx, params.site_id)
+    if not cred:
+        return ActionResult.error(
+            "SSH not configured for this site. Use add_ssh first.", retryable=False,
+            code=WP_SSH_NOT_CONFIGURED,
+        )
+    rows, cli_err = await wp_cli.list_plugins_cli(cred)
+    if cli_err:
+        return ActionResult.error(cli_err, retryable=True, code=WP_SSH_COMMAND_FAILED)
+    items = [
+        Plugin(
+            id=p.get("name", ""),
+            title=p.get("name", ""),
+            kind="wp_plugin",
+            status=p.get("status", ""),
+            version=p.get("version", ""),
+            update_available=p.get("update_version", "") if p.get("update") == "available" else "",
+        )
+        for p in rows
+    ]
+    return ActionResult.success(sdl.EntityList[Plugin](items=items),
+                                summary=f"{len(items)} plugin(s)")
 
 
 @chat.function(

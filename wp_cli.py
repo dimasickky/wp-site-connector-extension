@@ -716,3 +716,88 @@ async def count_posts_cli(cred: dict, post_type: str = "post") -> tuple[int | No
     if not stripped.isdigit():
         return None, f"Unexpected wp-cli output: {stripped[:200]}"
     return int(stripped), None
+
+
+async def list_plugins_cli(cred: dict) -> tuple[list | None, str | None]:
+    """List installed plugins via `wp plugin list --format=json` (read-only).
+
+    Returns name, status (active/inactive/must-use/dropin), version, and
+    update_version (target version if an update is available, else empty).
+    `wp plugin` is a WP-CLI core command — always present, no companion
+    plugin required (unlike `wp wc`, which needs WooCommerce installed).
+    """
+    sess, err = await _cli_session(cred)
+    if err:
+        return None, err
+    fields = "name,status,version,update,update_version"
+    cmd = (f"wp plugin list --format=json --fields={fields} "
+          f"--path={sess['wp_path']} --allow-root")
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass)
+    if out is None:
+        return None, run_err or "SSH connection failed"
+    try:
+        return json.loads(out) if out.strip() else [], None
+    except Exception:
+        return None, f"Unexpected wp-cli output: {out[:200]}"
+
+
+async def manage_plugin_cli(cred: dict, plugin: str, action: str) -> tuple[str | None, str | None]:
+    """Run `wp plugin activate|deactivate|update <plugin>`.
+
+    Caller (handlers_wp_cli.py) is responsible for validating `plugin` against
+    a live `list_plugins_cli` result and `action` against the allowed set
+    before calling this — this function trusts its inputs are already
+    checked, it only shlex-quotes them for the shell (defense in depth, not
+    the only validation layer).
+    """
+    sess, err = await _cli_session(cred)
+    if err:
+        return None, err
+    cmd = (f"wp plugin {shlex.quote(action)} {shlex.quote(plugin)} "
+          f"--path={sess['wp_path']} --allow-root")
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass)
+    if out is None:
+        return None, run_err or "SSH connection failed"
+    return out, None
+
+
+async def run_wp_cli_cli(cred: dict, namespace: str, args: list[str]) -> tuple[str | None, str | None]:
+    """Generic WP-CLI runner: `wp <namespace> <arg1> <arg2> ...`.
+
+    SECURITY: this function is the raw executor ONLY — namespace allowlisting,
+    subcommand-level destructive classification, and global-flag stripping
+    all happen in `wp_cli_policy.py` + the calling handler BEFORE args reach
+    here. Command assembly (including per-arg shlex-quoting) is delegated to
+    `wp_cli_policy.build_wp_cli_command` — single source of truth for how a
+    namespace+args list becomes a shell command, so the quoting logic isn't
+    duplicated (and can't drift) between the policy module and the transport.
+    Do not call this directly from a handler without going through the
+    policy checks first.
+    """
+    import wp_cli_policy
+    sess, err = await _cli_session(cred)
+    if err:
+        return None, err
+    cmd = wp_cli_policy.build_wp_cli_command(sess["wp_path"], namespace, args)
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass)
+    if out is None:
+        return None, run_err or "SSH connection failed"
+    return out, None

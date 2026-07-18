@@ -1,8 +1,8 @@
 {
   "manifest_schema_version": 3,
-  "sdk_version": "5.9.11",
+  "sdk_version": "5.9.9",
   "app_id": "wp-site-connector-extension",
-  "version": "0.7.0",
+  "version": "0.9.0",
   "name": "WP Site Connector",
   "description": "Connect WordPress sites by URL and Application Password and read their posts, pages, media, and health.",
   "icon": "icon.svg",
@@ -2589,6 +2589,170 @@
       "owner_chat_tool": "wp-site-connector"
     },
     {
+      "name": "list_plugins",
+      "description": "List installed plugins on a connected WordPress site — name, active/inactive status, version, and whether an update is available. Requires SSH access (add_ssh) since WordPress core doesn't expose plugin management over REST.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from a previous list_sites call — never invent it",
+            "title": "Site Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "SiteIdParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "Plugin": {
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "title": "Id"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "kind": {
+                "default": "",
+                "title": "Kind",
+                "type": "string"
+              },
+              "subtitle": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Subtitle"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Status"
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Url"
+              },
+              "version": {
+                "default": "",
+                "title": "Version",
+                "type": "string"
+              },
+              "update_available": {
+                "default": "",
+                "title": "Update Available",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "title": "Plugin",
+            "type": "object",
+            "x-sdl": "entity"
+          }
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/Plugin"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Page"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EntityList[Plugin]",
+        "type": "object",
+        "x-sdl": "entity-list"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "wp-site-connector"
+    },
+    {
       "name": "list_custom_posts",
       "description": "List items of a custom post type on a connected WordPress site. Use post_type= with the REST base slug (e.g. 'products', 'events', 'portfolio'). Check the site's panel to see available post types.",
       "action_type": "read",
@@ -3547,6 +3711,429 @@
         "x-sdl": "entity"
       },
       "event": "wp-site-connector.upload_media",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "wp-site-connector"
+    },
+    {
+      "name": "manage_plugin",
+      "description": "Activate, deactivate, or update a plugin on a connected WordPress site. The plugin slug is validated against the site's live plugin list (call list_plugins first) — never guess a slug. 'deactivate' can break site functionality that depends on the plugin, so it requires an explicit confirm=true on a second call; the first call only previews the action.",
+      "action_type": "destructive",
+      "chain_callable": true,
+      "effects": [
+        "wp.manage_plugin"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from a previous list_sites call — never invent it",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "plugin": {
+            "description": "Plugin slug exactly as it appears in list_plugins (e.g. 'litespeed-cache') — validated against the site's live plugin list, never a hardcoded name",
+            "title": "Plugin",
+            "type": "string"
+          },
+          "action": {
+            "description": "'activate', 'deactivate', or 'update'",
+            "title": "Action",
+            "type": "string"
+          },
+          "confirm": {
+            "default": false,
+            "description": "Must be explicitly set true to actually perform 'deactivate' (destructive). First call without confirm=true only previews what would happen and does nothing.",
+            "title": "Confirm",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "site_id",
+          "plugin",
+          "action"
+        ],
+        "title": "ManagePluginParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "plugin": {
+            "default": "",
+            "title": "Plugin",
+            "type": "string"
+          },
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "needs_confirmation": {
+            "default": false,
+            "title": "Needs Confirmation",
+            "type": "boolean"
+          },
+          "output": {
+            "default": "",
+            "title": "Output",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "PluginActionResult",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "wp-site-connector.manage_plugin",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "wp-site-connector"
+    },
+    {
+      "name": "purge_cache",
+      "description": "Purge the site's page cache. Auto-detects an active cache plugin (currently LiteSpeed Cache via its litespeed-purge WP-CLI namespace) from the site's real, live plugin list — if none is found, reports that clearly instead of silently doing nothing.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "wp.purge_cache"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from a previous list_sites call — never invent it",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "scope": {
+            "default": "all",
+            "description": "'all' (whole site cache) or 'front' (front page only)",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "PurgeCacheParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "scope": {
+            "default": "",
+            "title": "Scope",
+            "type": "string"
+          },
+          "cache_plugin": {
+            "default": "",
+            "title": "Cache Plugin",
+            "type": "string"
+          },
+          "output": {
+            "default": "",
+            "title": "Output",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "CacheActionResult",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "wp-site-connector.purge_cache",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "wp-site-connector"
+    },
+    {
+      "name": "run_wp_cli",
+      "description": "Run a WP-CLI command in a namespace not covered by the dedicated tools (manage_plugin, purge_cache) — e.g. WooCommerce (wc), a theme, transients, cron. namespace must be on the server-side allowlist; dangerous namespaces (eval, db, config, shell) are always rejected. Destructive subcommands (delete/remove/set-role/etc.) require an explicit confirm=true on a second call — the first call only previews what would run.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "wp.run_wp_cli"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from a previous list_sites call — never invent it",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "namespace": {
+            "description": "WP-CLI command namespace, e.g. 'plugin', 'transient', 'litespeed-purge'. Must be on the server-side allowlist — arbitrary/unknown namespaces and dangerous ones (eval, db, config, shell) are always rejected.",
+            "title": "Namespace",
+            "type": "string"
+          },
+          "args": {
+            "description": "Remaining WP-CLI arguments after the namespace, e.g. ['list', '--status=active']. Global flags like --path=/--url=/--ssh=/--allow-root are stripped automatically — never include them.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Args",
+            "type": "array"
+          },
+          "confirm": {
+            "default": false,
+            "description": "Must be explicitly set true to actually perform a write/destructive call. First call without confirm=true only previews what would happen and does nothing.",
+            "title": "Confirm",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "site_id",
+          "namespace"
+        ],
+        "title": "RunWpCliParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "namespace": {
+            "default": "",
+            "title": "Namespace",
+            "type": "string"
+          },
+          "classification": {
+            "default": "",
+            "title": "Classification",
+            "type": "string"
+          },
+          "needs_confirmation": {
+            "default": false,
+            "title": "Needs Confirmation",
+            "type": "boolean"
+          },
+          "output": {
+            "default": "",
+            "title": "Output",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "WpCliResult",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "wp-site-connector.run_wp_cli",
       "background": false,
       "long_running": false,
       "scopes": [],
