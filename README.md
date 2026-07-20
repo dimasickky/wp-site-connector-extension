@@ -1,6 +1,6 @@
 # WordPress Site Connector
 
-[![Imperal SDK](https://img.shields.io/badge/Imperal%20SDK-5.9.6-6c5ce7?logo=python&logoColor=white)](https://imperal.io)
+[![Imperal SDK](https://img.shields.io/badge/Imperal%20SDK-5.9.12-6c5ce7?logo=python&logoColor=white)](https://imperal.io)
 [![License: LGPL v2.1](https://img.shields.io/badge/License-LGPL--2.1-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776ab?logo=python&logoColor=white)](https://www.python.org/)
 
@@ -99,7 +99,7 @@ To add it, provide the host, port, SSH username, absolute WordPress path, and ei
 ### Requirements
 
 - Python 3.11+
-- [Imperal SDK](https://github.com/imperalcloud/imperal-sdk) 5.9.6
+- [Imperal SDK](https://github.com/imperalcloud/imperal-sdk) 5.9.12
 
 ### Install and test
 
