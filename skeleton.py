@@ -10,7 +10,18 @@ log = logging.getLogger("wp-site-connector")
 @ext.skeleton(
     "sites_overview",
     alert=True,
-    ttl=300,
+    # 120s, down from 300s but deliberately not the 60s used by the busier
+    # sections. The set of connected sites only changes on an explicit
+    # connect_site / forget_site — rare and user-initiated — so the staleness
+    # risk is far lower here than for counters that move on their own. What 300s
+    # did cost was the moment that matters most: right after connecting a site,
+    # the assistant could still claim none was connected for five minutes.
+    #
+    # The platform ticks on the MINIMUM ttl across a user's sections, so this
+    # value doesn't set the tick — it just means this section refreshes every
+    # other tick instead of every one, which is the right trade for a snapshot
+    # this static.
+    ttl=120,
     description="Connected WordPress sites — id, title, url per site.",
 )
 async def sites_overview(ctx):

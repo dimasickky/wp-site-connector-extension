@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.9.2 — 2026-07-27 — Skeleton freshness
+
+### Changed
+- Skeleton `ttl` 300s → 120s. Deliberately not the 60s used by our busier
+  sections: the set of connected sites only changes on an explicit
+  `connect_site` / `forget_site`, so the staleness risk is far lower than for
+  counters that move on their own. What 300s did cost was the moment that
+  matters most — right after connecting a site, the assistant could still
+  claim none was connected for five minutes.
+
 ## v0.9.1 — 2026-07-19 — SDK 5.9.12
 
 ### Changed
