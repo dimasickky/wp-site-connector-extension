@@ -773,6 +773,40 @@ async def manage_plugin_cli(cred: dict, plugin: str, action: str) -> tuple[str |
     return out, None
 
 
+async def manage_plugins_cli(cred: dict, plugins: list[str], action: str) -> tuple[str | None, str | None]:
+    """Run `wp plugin activate|deactivate|update <p1> <p2> ...` — ONE command.
+
+    Deliberately one WP-CLI invocation over one SSH session, not a fan-out of
+    N `manage_plugin_cli` calls. Every call here opens its own SSH connection
+    (see `_cli_session` + `_run`), so N plugins would mean N handshakes against
+    someone's shared host — far more expensive than the work itself, and a good
+    way to look like a brute-force attempt to a host's fail2ban. WP-CLI already
+    accepts multiple slugs natively, so the batch is a single
+    `wp plugin update a b c`.
+
+    Same contract as the single version: the caller validates every slug
+    against a live `list_plugins_cli` result and the action against the allowed
+    set BEFORE calling. Slugs are shlex-quoted here as defense in depth, never
+    as the only validation layer.
+    """
+    sess, err = await _cli_session(cred)
+    if err:
+        return None, err
+    slugs = " ".join(shlex.quote(p) for p in plugins)
+    cmd = (f"wp plugin {shlex.quote(action)} {slugs} "
+          f"--path={sess['wp_path']} --allow-root")
+
+    async with (_key_file(sess["key"]) as kf,
+                _known_hosts_file(sess["host_key"]) as khf,
+                _askpass_file(bool(sess["password"])) as askpass):
+        out, run_err = await _run(sess["host"], sess["port"], sess["user"], kf, cmd,
+                                  known_hosts_path=khf, password=sess["password"],
+                                  askpass_path=askpass)
+    if out is None:
+        return None, run_err or "SSH connection failed"
+    return out, None
+
+
 async def run_wp_cli_cli(cred: dict, namespace: str, args: list[str]) -> tuple[str | None, str | None]:
     """Generic WP-CLI runner: `wp <namespace> <arg1> <arg2> ...`.
 

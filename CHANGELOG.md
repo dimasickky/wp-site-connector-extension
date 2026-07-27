@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.10.0 — 2026-07-27 — Bulk plugin management
+
+### Added
+
+- **`manage_plugins`** — activate / deactivate / update several plugins in one
+  call. "Update all my plugins" was N separate calls before this.
+
+### Notes
+
+- **One WP-CLI command, not a fan-out — the opposite choice from the other
+  extensions, for a concrete reason.** Every WP-CLI call here opens its own SSH
+  session, so N plugins would mean N handshakes against what is often a shared
+  host: far more expensive than the work itself, and a good way to look like a
+  brute-force attempt to the host's fail2ban. WP-CLI accepts multiple slugs
+  natively, so the batch is a single `wp plugin update a b c` over one session.
+- **Unknown slugs abort the whole batch** rather than being skipped. Elsewhere
+  a bad item fails on its own because each item is its own request; here there
+  is exactly one command, and a caller who misspelled one slug in a deactivate
+  list is far likelier to have the wrong list than to want the other nine done
+  anyway. Every slug is still validated against the site's live plugin list
+  first — same rule as `manage_plugin`, applied to the whole set.
+- **No per-item rows in the result.** One command means one outcome; inventing
+  per-plugin rows would imply a granularity the execution does not have. This
+  is why it returns `BulkPluginActionResult` (slug list + single output) rather
+  than the per-item shape the fanned-out batches use.
+- Same explicit confirm-flow as `manage_plugin` for the destructive
+  `deactivate`, with the preview naming every plugin in the list. 50-slug
+  ceiling — past that, `run_wp_cli` with a flag is the right tool.
+
 ## v0.9.2 — 2026-07-27 — Skeleton freshness
 
 ### Changed

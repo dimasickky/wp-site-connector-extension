@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.12",
   "app_id": "wp-site-connector-extension",
-  "version": "0.9.2",
+  "version": "0.10.0",
   "name": "WP Site Connector",
   "description": "Connect WordPress sites by URL and Application Password and read their posts, pages, media, and health.",
   "icon": "icon.svg",
@@ -4134,6 +4134,159 @@
         "x-sdl": "entity"
       },
       "event": "wp-site-connector.run_wp_cli",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "wp-site-connector"
+    },
+    {
+      "name": "manage_plugins",
+      "description": "Activate, deactivate, or update SEVERAL plugins at once on a connected WordPress site — the batch version of manage_plugin, for bulk updates. Every slug is validated against the site's live plugin list (call list_plugins first) — never guess a slug. 'deactivate' can break site functionality, so it requires an explicit confirm=true on a second call; the first call only previews the action.",
+      "action_type": "destructive",
+      "chain_callable": true,
+      "effects": [
+        "wp.manage_plugin"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from a previous list_sites call — never invent it",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "plugins": {
+            "description": "Plugin slugs exactly as they appear in list_plugins, e.g. ['litespeed-cache', 'wordfence'] — every slug is validated against the site's live plugin list, never guessed",
+            "items": {
+              "type": "string"
+            },
+            "title": "Plugins",
+            "type": "array"
+          },
+          "action": {
+            "description": "'activate', 'deactivate', or 'update' — applied to every plugin in the list",
+            "title": "Action",
+            "type": "string"
+          },
+          "confirm": {
+            "default": false,
+            "description": "Must be explicitly set true to actually perform 'deactivate' (destructive). First call without confirm=true only previews what would happen and does nothing.",
+            "title": "Confirm",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "site_id",
+          "plugins",
+          "action"
+        ],
+        "title": "ManagePluginsParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Result of one `wp plugin <action> <slug...>` covering several plugins.\n\nCarries the slug LIST and a single `output`, not per-plugin rows — because\nit really is one WP-CLI command over one SSH session, so there is one\noutcome to report. Inventing per-item rows here would imply a granularity\nthe execution does not have.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "plugins": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Plugins",
+            "type": "array"
+          },
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "needs_confirmation": {
+            "default": false,
+            "title": "Needs Confirmation",
+            "type": "boolean"
+          },
+          "output": {
+            "default": "",
+            "title": "Output",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "BulkPluginActionResult",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "wp-site-connector.manage_plugins",
       "background": false,
       "long_running": false,
       "scopes": [],

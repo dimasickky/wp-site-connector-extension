@@ -149,6 +149,13 @@ class ManagePluginParams(BaseModel):
     confirm: bool = Field(default=False, description="Must be explicitly set true to actually perform 'deactivate' (destructive). First call without confirm=true only previews what would happen and does nothing.")
 
 
+class ManagePluginsParams(BaseModel):
+    site_id: str = Field(description="Site id from a previous list_sites call — never invent it")
+    plugins: list[str] = Field(description="Plugin slugs exactly as they appear in list_plugins, e.g. ['litespeed-cache', 'wordfence'] — every slug is validated against the site's live plugin list, never guessed")
+    action: str = Field(description="'activate', 'deactivate', or 'update' — applied to every plugin in the list")
+    confirm: bool = Field(default=False, description="Must be explicitly set true to actually perform 'deactivate' (destructive). First call without confirm=true only previews what would happen and does nothing.")
+
+
 class PurgeCacheParams(BaseModel):
     site_id: str = Field(description="Site id from a previous list_sites call — never invent it")
     scope: str = Field(default="all", description="'all' (whole site cache) or 'front' (front page only)")
@@ -163,6 +170,20 @@ class RunWpCliParams(BaseModel):
 
 class PluginActionResult(sdl.Entity):
     plugin: str = ""
+    action: str = ""
+    needs_confirmation: bool = False
+    output: str = ""
+
+
+class BulkPluginActionResult(sdl.Entity):
+    """Result of one `wp plugin <action> <slug...>` covering several plugins.
+
+    Carries the slug LIST and a single `output`, not per-plugin rows — because
+    it really is one WP-CLI command over one SSH session, so there is one
+    outcome to report. Inventing per-item rows here would imply a granularity
+    the execution does not have.
+    """
+    plugins: list[str] = []
     action: str = ""
     needs_confirmation: bool = False
     output: str = ""

@@ -15,8 +15,8 @@ only record what succeeded.
 """
 from imperal_sdk import ActionResult
 from app import chat
-from models import (ManagePluginParams, PurgeCacheParams, RunWpCliParams,
-                    PluginActionResult, CacheActionResult, WpCliResult)
+from models import (ManagePluginParams, ManagePluginsParams, PurgeCacheParams, RunWpCliParams,
+                    PluginActionResult, BulkPluginActionResult, CacheActionResult, WpCliResult)
 from error_codes import WP_SSH_NOT_CONFIGURED, WP_SSH_COMMAND_FAILED
 from imperal_sdk.chat.error_codes import VALIDATION_MISSING_FIELD, PERMISSION_DENIED
 import storage
@@ -288,4 +288,127 @@ async def run_wp_cli(ctx, params: RunWpCliParams) -> ActionResult:
             output=(out or "").strip(),
         ),
         summary=f"Ran 'wp {namespace} {' '.join(clean_args)}'.",
+    )
+
+
+# Ceiling for the plugin batch. Lower than the other extensions' on purpose:
+# this is one WP-CLI command line over SSH, and past a few dozen slugs the
+# realistic failure is an unwieldy command rather than rate-limiting. A site
+# with more than 50 plugins to act on at once is a site-wide operation that
+# wants `run_wp_cli` with a flag, not an enumerated list.
+MAX_BULK_PLUGINS = 50
+
+
+@chat.function(
+    "manage_plugins",
+    description=(
+        "Activate, deactivate, or update SEVERAL plugins at once on a connected WordPress "
+        "site — the batch version of manage_plugin, for bulk updates. Every slug is "
+        "validated against the site's live plugin list (call list_plugins first) — never "
+        "guess a slug. 'deactivate' can break site functionality, so it requires an "
+        "explicit confirm=true on a second call; the first call only previews the action."
+    ),
+    action_type="destructive",
+    data_model=BulkPluginActionResult,
+    effects=["wp.manage_plugin"],
+    event="wp-site-connector.manage_plugins",
+)
+async def manage_plugins(ctx, params: ManagePluginsParams) -> ActionResult:
+    """Run one `wp plugin <action> <slug...>` over a set of plugins.
+
+    'Update all my plugins' was N separate calls, each with its own SSH
+    handshake. This is one command over one session — see `manage_plugins_cli`
+    for why that matters more here than concurrency would.
+
+    Two deliberate differences from the other batch tools in the fleet:
+
+    * **Unknown slugs abort the whole batch** instead of failing individually.
+      Elsewhere a bad item is skipped and the rest proceed, because there each
+      item is its own request. Here there is exactly one command: a caller who
+      misspelled one slug in a deactivate list is far likelier to have the
+      wrong list than to want the other nine done anyway.
+    * **No per-item rows in the result.** One command, one outcome — inventing
+      per-plugin rows would imply a granularity the execution does not have.
+    """
+    action = (params.action or "").strip().lower()
+    if action not in _MANAGE_PLUGIN_ACTIONS:
+        await ctx.log(f"manage_plugins: rejected — invalid action '{params.action}'", level="warning")
+        return ActionResult.error(
+            f"Invalid action '{params.action}' — use activate, deactivate, or update.",
+            retryable=False, code=VALIDATION_MISSING_FIELD,
+        )
+
+    slugs = [p.strip() for p in (params.plugins or []) if (p or "").strip()]
+    if not slugs:
+        return ActionResult.error("No plugins given.", retryable=False, code=VALIDATION_MISSING_FIELD)
+    if len(slugs) > MAX_BULK_PLUGINS:
+        return ActionResult.error(
+            f"That's {len(slugs)} plugins in one call — the limit is {MAX_BULK_PLUGINS}.",
+            retryable=False, code=VALIDATION_MISSING_FIELD,
+        )
+    # De-dupe while preserving order: `wp plugin update x x` is not harmful but
+    # it is noise in the audit log and in the command line.
+    seen: set = set()
+    slugs = [s for s in slugs if not (s in seen or seen.add(s))]
+
+    cred, err = await _require_ssh(ctx, params.site_id)
+    if err:
+        return err
+
+    # Validate EVERY slug against the site's real, live plugin list — same rule
+    # as the single-plugin tool, applied to the whole set before anything runs.
+    rows, cli_err = await wp_cli.list_plugins_cli(cred)
+    if cli_err:
+        await ctx.log(f"manage_plugins: rejected — could not verify plugin list: {cli_err}", level="warning")
+        return ActionResult.error(cli_err, retryable=True, code=WP_SSH_COMMAND_FAILED)
+    known_slugs = {p.get("name", "") for p in rows}
+    unknown = [s for s in slugs if s not in known_slugs]
+    if unknown:
+        await ctx.log(
+            f"manage_plugins: rejected — unknown plugin slug(s) {', '.join(unknown)} for site_id={params.site_id}",
+            level="warning",
+        )
+        return ActionResult.error(
+            f"Not installed on this site: {', '.join(unknown)}. "
+            "Call list_plugins to see what's available.",
+            retryable=False, code=VALIDATION_MISSING_FIELD,
+        )
+
+    is_destructive = action in _DESTRUCTIVE_PLUGIN_ACTIONS
+    if is_destructive and not params.confirm:
+        await ctx.log(
+            f"manage_plugins: preview only (awaiting confirm) — {action} {len(slugs)} plugin(s) "
+            f"on site_id={params.site_id}",
+            level="info",
+        )
+        return ActionResult.success(
+            BulkPluginActionResult(
+                id=params.site_id, title=f"{len(slugs)} plugins", kind="wp_plugin_action",
+                plugins=slugs, action=action, needs_confirmation=True,
+            ),
+            summary=(
+                f"This will {action} {len(slugs)} plugin(s): {', '.join(slugs)} — "
+                "which may affect site functionality. Call again with confirm=true to actually run it."
+            ),
+        )
+
+    out, run_err = await wp_cli.manage_plugins_cli(cred, slugs, action)
+    if run_err:
+        await ctx.log(
+            f"manage_plugins: SSH/WP-CLI error — {action} {len(slugs)} plugin(s): {run_err}",
+            level="error",
+        )
+        return ActionResult.error(run_err, retryable=True, code=WP_SSH_COMMAND_FAILED)
+
+    await ctx.log(
+        f"manage_plugins: executed — {action} {', '.join(slugs)} on site_id={params.site_id}",
+        level="info",
+    )
+    return ActionResult.success(
+        BulkPluginActionResult(
+            id=params.site_id, title=f"{len(slugs)} plugins", kind="wp_plugin_action",
+            plugins=slugs, action=action, needs_confirmation=False,
+            output=(out or "").strip(),
+        ),
+        summary=f"{action.capitalize()}d {len(slugs)} plugin(s): {', '.join(slugs)}.",
     )
