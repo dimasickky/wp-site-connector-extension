@@ -26,7 +26,18 @@ async def list_sites(ctx, params: _NoParams) -> ActionResult:
              status=r.get("status", "connected"), last_checked=r.get("last_checked"))
         for r in rows
     ]
-    return ActionResult.success(sdl.EntityList[Site](items=sites), summary=f"{len(sites)} site(s) connected")
+    # EntityList already has the fields for this, so say it properly: `total` is
+    # a real COUNT and `has_more` marks a truncated page. Reporting len(sites)
+    # as the total would turn the cap into a fake answer the moment it is hit.
+    total = await storage.count_site_records(ctx)
+    has_more = total > len(sites)
+    summary = f"{total} site(s) connected"
+    if has_more:
+        summary += f" — showing the first {len(sites)}"
+    return ActionResult.success(
+        sdl.EntityList[Site](items=sites, total=total, has_more=has_more),
+        summary=summary,
+    )
 
 
 # NOTE: site auth resolution (REST vs SSH) lives in storage.resolve_site —

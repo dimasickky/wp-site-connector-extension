@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.10.1 — 2026-07-27 — Store reads: point lookups instead of scans
+
+### Fixed
+
+- **A site past row 100 was not slow to find — it was unfindable.** `_find_doc`
+  read the first 100 rows and compared two possible key names in Python. Every
+  per-site lookup goes through it, so beyond that point a site's credentials,
+  SSH record and cache effectively ceased to exist while the site itself still
+  appeared in listings. Now a `where=` point lookup.
+- **`list_sites` and the skeleton reported a page size as a total.** Both used
+  `len(<capped list>)`. Now a real server-side `store.count()`, and `list_sites`
+  marks a truncated page through `EntityList.has_more` — the field was already
+  there for exactly this, and a partial answer no longer reads like a complete
+  one.
+
+### Notes
+
+- **The two key spellings are real, not legacy noise.** SITES stores the id
+  under `id`; CREDS / CACHE / SSH_CREDS store it under `site_id`. The lookup
+  honours both (two `where=` queries, `site_id` first as the majority case), and
+  a test pins each — collapsing them to one key would break half the
+  collections.
+- **Why this is not cursor paging.** `Page` carries `cursor`/`has_more` and
+  `StoreProtocol` advertises a `cursor=` argument, but the real client
+  (`imperal_sdk/store/client.py`, SDK 5.9.12) accepts only `limit`, so page 2
+  cannot be requested at all. Hence: `where=` for point lookups, `count()` for
+  totals, and a named ceiling plus `has_more` for the one genuine list.
+- 6 new tests, including a site placed past the old 100-row window. 215 total.
+
 ## v0.10.0 — 2026-07-27 — Bulk plugin management
 
 ### Added

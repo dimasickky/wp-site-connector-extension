@@ -8,17 +8,58 @@ CREDS_COLLECTION = "creds"
 
 # ── Site records ──────────────────────────────────────────────────────────────
 
+# Explicit ceiling for the one read that is genuinely a LIST.
+#
+# Cursor paging is not available: `Page` carries `cursor`/`has_more` and
+# `StoreProtocol` advertises a `cursor=` argument, but the real client
+# (`imperal_sdk/store/client.py`, SDK 5.9.12) accepts only `limit` — page 2
+# cannot be requested. So: a named ceiling instead of a bare `limit=100` that
+# reads like "all of them", and `where=` everywhere the read is really a point
+# lookup.
+_SITES_PAGE_LIMIT = 100
+
+
 async def _find_doc(ctx, collection, site_id):
-    page = await ctx.store.query(collection, limit=100)
-    for doc in page.data:
-        if doc.data.get("site_id") == site_id or doc.data.get("id") == site_id:
-            return doc
-    return None
+    """Find one document by site id — a point lookup, not a scan.
+
+    Two `where=` queries rather than one because the collections genuinely
+    disagree on the key name: SITES stores the id under `id` (see
+    handlers_connect), while CREDS / CACHE / SSH_CREDS store it under
+    `site_id`. The old code papered over that by reading the first 100 rows and
+    checking both keys in Python — which also meant a site past row 100 became
+    invisible: not "slow", but unfindable, so its credentials and cache
+    silently ceased to exist.
+
+    `site_id` first because that is the majority of callers; `id` second for
+    SITES. Both are exact-match on a string id, so unlike telegram's chat_id
+    there is no int/str mismatch to worry about here.
+    """
+    page = await ctx.store.query(collection, where={"site_id": site_id}, limit=1)
+    if page.data:
+        return page.data[0]
+    page = await ctx.store.query(collection, where={"id": site_id}, limit=1)
+    return page.data[0] if page.data else None
 
 
 async def list_site_records(ctx):
-    page = await ctx.store.query(SITES_COLLECTION, limit=100)
+    """Every site this user connected (capped at `_SITES_PAGE_LIMIT`).
+
+    A real list, and the one place the cap is a genuine limitation rather than
+    a formality. 100 connected WordPress sites for a single user is far outside
+    normal use, and paging is impossible on this SDK — so the cap is named and
+    documented instead of hidden in the call.
+    """
+    page = await ctx.store.query(SITES_COLLECTION, limit=_SITES_PAGE_LIMIT)
     return [doc.data for doc in page.data]
+
+
+async def count_site_records(ctx) -> int:
+    """How many sites this user connected — a server-side COUNT, no cap.
+
+    Use this for totals instead of `len(await list_site_records(ctx))`, which
+    would report the page size once the cap is reached.
+    """
+    return await ctx.store.count(SITES_COLLECTION)
 
 
 async def get_site_record(ctx, site_id):

@@ -32,7 +32,13 @@ async def sites_overview(ctx):
             {"id": r["id"], "title": r.get("name", r["id"]), "url": r.get("url", "")}
             for r in rows
         ]
-        return {"response": {"sites_connected": len(sites), "sites": sites}}
+        # `sites_connected` is a real COUNT, not len(sites): the list is capped,
+        # so its length would report the page size as the total. The classifier
+        # reads this number to decide whether the user has sites at all —
+        # feeding it a cap disguised as a total is exactly the quiet blindness
+        # this section exists to remove.
+        total = await storage.count_site_records(ctx)
+        return {"response": {"sites_connected": total, "sites": sites}}
     except Exception as e:
         log.error("skeleton refresh failed: %s", e)
         return {"response": {"sites_connected": 0, "sites": []}}
