@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.10.3 — 2026-08-31 — SDK 5.13.1
+
+### Changed
+
+- **imperal-sdk 5.9.22 → 5.13.1** — new gateway namespaces, unified
+  callable catalog, tray/menu contributions, `tests/`-fixture deploy
+  scan fix. No surface changes: none of the hand-rolled patterns the
+  new SDK replaces (private-attribute client rebuilds, custom Back
+  buttons, manual OAuth refresh) exists in this extension.
+
+## v0.10.2 — 2026-08-16 — SDK 5.9.22
+
+### Changed
+
+- **Bumped `imperal-sdk` 5.9.12 → 5.9.22.** Diffed both wheels directly before
+  touching the pin — every change on the way is additive and defaulted, and
+  this module touches none of the changed surfaces. Zero behavior change.
+
 ## v0.10.1 — 2026-07-27 — Store reads: point lookups instead of scans
 
 ### Fixed
