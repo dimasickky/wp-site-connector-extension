@@ -1,8 +1,8 @@
 {
   "manifest_schema_version": 3,
-  "sdk_version": "5.13.1",
+  "sdk_version": "5.15.1",
   "app_id": "wp-site-connector-extension",
-  "version": "0.10.3",
+  "version": "0.11.0",
   "name": "WP Site Connector",
   "description": "Connect WordPress sites by URL and Application Password and read their posts, pages, media, and health.",
   "icon": "icon.svg",
@@ -4312,6 +4312,13 @@
       "scope": "app"
     }
   ],
+  "search_providers": [
+    {
+      "entity_type": "wp_sites",
+      "handler": "search_provider_wp_sites",
+      "description": "Search connected WordPress sites by name or URL"
+    }
+  ],
   "panels": [
     {
       "panel_id": "secrets",
@@ -4320,7 +4327,9 @@
       "tree": {},
       "icon": "KeyRound",
       "refresh": "manual",
-      "center_overlay": false
+      "center_overlay": false,
+      "stale_while_revalidate": true,
+      "cache_ttl": 60
     },
     {
       "panel_id": "sidebar",
@@ -4330,6 +4339,8 @@
       "icon": "",
       "refresh": "on_event:wp-site-connector.connect_site,wp-site-connector.connect_site_ssh,wp-site-connector.forget_site,wp-site-connector.refresh_site,wp-site-connector.refresh_all_sites,wp-site-connector.add_ssh,wp-site-connector.remove_ssh,wp-site-connector.get_server_info",
       "center_overlay": false,
+      "stale_while_revalidate": true,
+      "cache_ttl": 60,
       "default_width": 280,
       "min_width": 200,
       "max_width": 400
@@ -4341,7 +4352,9 @@
       "tree": {},
       "icon": "",
       "refresh": "manual",
-      "center_overlay": true
+      "center_overlay": true,
+      "stale_while_revalidate": true,
+      "cache_ttl": 60
     }
   ]
 }

@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.11.0 — 2026-09-07 — SDK 5.15.1, Omnisearch & SWR caching
+
+### Added
+
+- **Semantic Omnisearch (`@ext.search_provider`)** — registered `wp_sites` provider for Cmd+K search across connected sites.
+- **Stale-While-Revalidate Caching** — added `stale_while_revalidate=True, cache_ttl=60` to sidebar panel for instant UI rendering.
+
+### Changed
+
+- **imperal-sdk 5.13.1 → 5.15.1** — bumped SDK requirement and regenerated manifest.
+
 ## v0.10.3 — 2026-08-31 — SDK 5.13.1
 
 ### Changed

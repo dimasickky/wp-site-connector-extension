@@ -55,6 +55,8 @@ def _lamp(r: dict) -> ui.Badge:
     default_width=280,
     min_width=200,
     max_width=400,
+    stale_while_revalidate=True,
+    cache_ttl=60,
     refresh="on_event:wp-site-connector.connect_site,wp-site-connector.connect_site_ssh,"
             "wp-site-connector.forget_site,"
             "wp-site-connector.refresh_site,wp-site-connector.refresh_all_sites,"
