@@ -4356,6 +4356,6 @@
       "cache_ttl": 60
     }
   ],
-  "schema_version": "1.6.0",
-  "category": "cms"
+  "category": "cms",
+  "manifest_schema_version": 3
 }
