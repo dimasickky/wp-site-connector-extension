@@ -81,7 +81,14 @@ async def sidebar(ctx, active_site_id="", **kwargs):
 
     if not rows:
         site_list = ui.Empty(message="No sites connected yet.")
+        root = ui.Stack(children=[top_bar, ui.Divider(), site_list], gap=3)
     else:
+        connected_count = sum(1 for r in rows if r.get("status") == "connected")
+        stats_bar = ui.Stats([
+            ui.Stat(label="Sites", value=len(rows), icon="Globe", color="blue"),
+            ui.Stat(label="Connected", value=connected_count, icon="CheckCircle2",
+                    color="green" if connected_count == len(rows) else "amber"),
+        ], columns=2)
         items = [
             ui.ListItem(
                 id=r["id"],
@@ -101,8 +108,7 @@ async def sidebar(ctx, active_site_id="", **kwargs):
             for r in rows
         ]
         site_list = ui.List(items=items)
-
-    root = ui.Stack(children=[top_bar, ui.Divider(), site_list], gap=3)
+        root = ui.Stack(children=[top_bar, ui.Divider(), stats_bar, site_list], gap=3)
 
     if not active_site_id and rows:
         root.props["auto_action"] = ui.Call(
