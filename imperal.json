@@ -1,7 +1,7 @@
 {
-  "sdk_version": "5.15.1",
+  "sdk_version": "6.5.3",
   "app_id": "wp-site-connector-extension",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "name": "WP Site Connector",
   "description": "Connect WordPress sites by URL and Application Password and read their posts, pages, media, and health.",
   "icon": "icon.svg",

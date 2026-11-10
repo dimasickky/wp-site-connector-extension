@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.11.1 — 2026-11-10 — SDK 6.5.3 & Manifest category
+
+### Changed
+
+- **imperal-sdk 5.15.1 → 6.5.3** — bumped SDK requirement in `requirements.txt` and `imperal.json`.
+- **Manifest category** — declared `"category": "cms"` for platform catalog indexing.
+
 ## v0.11.0 — 2026-09-07 — SDK 5.15.1, Omnisearch & SWR caching
 
 ### Added
