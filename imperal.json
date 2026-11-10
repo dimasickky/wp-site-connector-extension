@@ -1,7 +1,7 @@
 {
   "sdk_version": "6.5.3",
   "app_id": "wp-site-connector-extension",
-  "version": "0.11.1",
+  "version": "0.12.0",
   "name": "WP Site Connector",
   "description": "Connect WordPress sites by URL and Application Password and read their posts, pages, media, and health.",
   "icon": "icon.svg",
@@ -14,7 +14,7 @@
   "tools": [
     {
       "name": "skeleton_refresh_sites_overview",
-      "description": "Connected WordPress sites — id, title, url per site.",
+      "description": "Connected WordPress sites \u2014 id, title, url per site.",
       "scopes": [],
       "parameters": {}
     },
@@ -55,7 +55,7 @@
             "type": "string"
           },
           "app_password": {
-            "description": "WordPress Application Password (from Users → Profile → Application Passwords)",
+            "description": "WordPress Application Password (from Users \u2192 Profile \u2192 Application Passwords)",
             "title": "App Password",
             "type": "string"
           }
@@ -348,7 +348,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -479,7 +479,7 @@
         "properties": {
           "site_id": {
             "default": "",
-            "description": "Site id — set automatically by the panel form",
+            "description": "Site id \u2014 set automatically by the panel form",
             "title": "Site Id",
             "type": "string"
           },
@@ -644,7 +644,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -939,7 +939,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -1131,7 +1131,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -1323,7 +1323,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -1490,7 +1490,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -1628,7 +1628,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -1865,7 +1865,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -2048,7 +2048,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -2240,7 +2240,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -2425,7 +2425,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -2589,7 +2589,7 @@
     },
     {
       "name": "list_plugins",
-      "description": "List installed plugins on a connected WordPress site — name, active/inactive status, version, and whether an update is available. Requires SSH access (add_ssh) since WordPress core doesn't expose plugin management over REST.",
+      "description": "List installed plugins on a connected WordPress site \u2014 name, active/inactive status, version, and whether an update is available. Requires SSH access (add_ssh) since WordPress core doesn't expose plugin management over REST.",
       "action_type": "read",
       "chain_callable": true,
       "effects": [],
@@ -2597,7 +2597,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -2761,7 +2761,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -2961,7 +2961,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -3109,7 +3109,7 @@
     },
     {
       "name": "create_post",
-      "description": "Create a new post on a connected WordPress site. Defaults to status='draft' — pass status='publish' to publish immediately, or status='future' with a date to schedule.",
+      "description": "Create a new post on a connected WordPress site. Defaults to status='draft' \u2014 pass status='publish' to publish immediately, or status='future' with a date to schedule.",
       "action_type": "write",
       "chain_callable": true,
       "effects": [
@@ -3119,7 +3119,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -3130,7 +3130,7 @@
           },
           "content": {
             "default": "",
-            "description": "Post body as HTML. To place an image INSIDE the text at a specific spot, embed an <img src=\"...\"> tag (or a <figure class=\"wp-block-image\"><img .../></figure> block) at that exact position — use the url returned by a prior upload_media call. WordPress renders the content top-to-bottom exactly as given.",
+            "description": "Post body as HTML. To place an image INSIDE the text at a specific spot, embed an <img src=\"...\"> tag (or a <figure class=\"wp-block-image\"><img .../></figure> block) at that exact position \u2014 use the url returned by a prior upload_media call. WordPress renders the content top-to-bottom exactly as given.",
             "title": "Content",
             "type": "string"
           },
@@ -3156,7 +3156,7 @@
               }
             ],
             "default": null,
-            "description": "ISO 8601 datetime for scheduled publication — required when status='future'",
+            "description": "ISO 8601 datetime for scheduled publication \u2014 required when status='future'",
             "title": "Date"
           },
           "slug": {
@@ -3198,7 +3198,7 @@
               }
             ],
             "default": null,
-            "description": "Media library id to use as the featured image (cover) — get this from a prior upload_media call. This sets the post's cover, separate from any images embedded in content.",
+            "description": "Media library id to use as the featured image (cover) \u2014 get this from a prior upload_media call. This sets the post's cover, separate from any images embedded in content.",
             "title": "Featured Media Id"
           },
           "meta_description": {
@@ -3211,7 +3211,7 @@
               }
             ],
             "default": null,
-            "description": "Rank Math SEO meta description shown in Google search results (aim for ~120-160 characters). Only takes effect on SSH-connected sites — Rank Math does not expose this field to the WordPress REST API, so it is silently ignored on Application-Password sites.",
+            "description": "Rank Math SEO meta description shown in Google search results (aim for ~120-160 characters). Only takes effect on SSH-connected sites \u2014 Rank Math does not expose this field to the WordPress REST API, so it is silently ignored on Application-Password sites.",
             "title": "Meta Description"
           },
           "focus_keyword": {
@@ -3224,7 +3224,7 @@
               }
             ],
             "default": null,
-            "description": "Rank Math focus keyword for this post's SEO analysis. Only takes effect on SSH-connected sites — same REST limitation as meta_description.",
+            "description": "Rank Math focus keyword for this post's SEO analysis. Only takes effect on SSH-connected sites \u2014 same REST limitation as meta_description.",
             "title": "Focus Keyword"
           }
         },
@@ -3339,7 +3339,7 @@
     },
     {
       "name": "update_post",
-      "description": "Update an existing post on a connected WordPress site — title, content, status, excerpt, or scheduled date. Only fields you pass are changed.",
+      "description": "Update an existing post on a connected WordPress site \u2014 title, content, status, excerpt, or scheduled date. Only fields you pass are changed.",
       "action_type": "write",
       "chain_callable": true,
       "effects": [
@@ -3349,12 +3349,12 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
           "post_id": {
-            "description": "WordPress post ID from a previous list_posts call — never invent it",
+            "description": "WordPress post ID from a previous list_posts call \u2014 never invent it",
             "title": "Post Id",
             "type": "string"
           },
@@ -3368,7 +3368,7 @@
               }
             ],
             "default": null,
-            "description": "New title — omit to leave unchanged",
+            "description": "New title \u2014 omit to leave unchanged",
             "title": "Title"
           },
           "content": {
@@ -3381,7 +3381,7 @@
               }
             ],
             "default": null,
-            "description": "New body as HTML — omit to leave unchanged. To place an image INSIDE the text, embed <img src=\"...\"> at that exact position using a url from a prior upload_media call.",
+            "description": "New body as HTML \u2014 omit to leave unchanged. To place an image INSIDE the text, embed <img src=\"...\"> at that exact position using a url from a prior upload_media call.",
             "title": "Content"
           },
           "status": {
@@ -3394,7 +3394,7 @@
               }
             ],
             "default": null,
-            "description": "New status: 'draft', 'publish', 'pending', 'future' — omit to leave unchanged",
+            "description": "New status: 'draft', 'publish', 'pending', 'future' \u2014 omit to leave unchanged",
             "title": "Status"
           },
           "excerpt": {
@@ -3407,7 +3407,7 @@
               }
             ],
             "default": null,
-            "description": "New excerpt — omit to leave unchanged",
+            "description": "New excerpt \u2014 omit to leave unchanged",
             "title": "Excerpt"
           },
           "date": {
@@ -3420,7 +3420,7 @@
               }
             ],
             "default": null,
-            "description": "New ISO 8601 scheduled datetime — omit to leave unchanged",
+            "description": "New ISO 8601 scheduled datetime \u2014 omit to leave unchanged",
             "title": "Date"
           },
           "slug": {
@@ -3433,7 +3433,7 @@
               }
             ],
             "default": null,
-            "description": "New custom URL slug — omit to leave unchanged",
+            "description": "New custom URL slug \u2014 omit to leave unchanged",
             "title": "Slug"
           },
           "featured_media_id": {
@@ -3446,7 +3446,7 @@
               }
             ],
             "default": null,
-            "description": "New media library id for the featured image (cover) — omit to leave unchanged. Get this from a prior upload_media call.",
+            "description": "New media library id for the featured image (cover) \u2014 omit to leave unchanged. Get this from a prior upload_media call.",
             "title": "Featured Media Id"
           },
           "meta_description": {
@@ -3459,7 +3459,7 @@
               }
             ],
             "default": null,
-            "description": "New Rank Math SEO meta description — omit to leave unchanged. Only takes effect on SSH-connected sites (see create_post).",
+            "description": "New Rank Math SEO meta description \u2014 omit to leave unchanged. Only takes effect on SSH-connected sites (see create_post).",
             "title": "Meta Description"
           },
           "focus_keyword": {
@@ -3472,7 +3472,7 @@
               }
             ],
             "default": null,
-            "description": "New Rank Math focus keyword — omit to leave unchanged. Only takes effect on SSH-connected sites (see create_post).",
+            "description": "New Rank Math focus keyword \u2014 omit to leave unchanged. Only takes effect on SSH-connected sites (see create_post).",
             "title": "Focus Keyword"
           }
         },
@@ -3597,13 +3597,13 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
           "files": {
             "default": null,
-            "description": "FileUpload payload (list[dict] with data_base64/name/content_type) — the image file to upload to the WordPress Media Library.",
+            "description": "FileUpload payload (list[dict] with data_base64/name/content_type) \u2014 the image file to upload to the WordPress Media Library.",
             "title": "Files"
           },
           "alt_text": {
@@ -3614,7 +3614,7 @@
           },
           "title": {
             "default": "",
-            "description": "Optional media title — defaults to the filename",
+            "description": "Optional media title \u2014 defaults to the filename",
             "title": "Title",
             "type": "string"
           }
@@ -3717,7 +3717,7 @@
     },
     {
       "name": "manage_plugin",
-      "description": "Activate, deactivate, or update a plugin on a connected WordPress site. The plugin slug is validated against the site's live plugin list (call list_plugins first) — never guess a slug. 'deactivate' can break site functionality that depends on the plugin, so it requires an explicit confirm=true on a second call; the first call only previews the action.",
+      "description": "Activate, deactivate, or update a plugin on a connected WordPress site. The plugin slug is validated against the site's live plugin list (call list_plugins first) \u2014 never guess a slug. 'deactivate' can break site functionality that depends on the plugin, so it requires an explicit confirm=true on a second call; the first call only previews the action.",
       "action_type": "destructive",
       "chain_callable": true,
       "effects": [
@@ -3727,12 +3727,12 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
           "plugin": {
-            "description": "Plugin slug exactly as it appears in list_plugins (e.g. 'litespeed-cache') — validated against the site's live plugin list, never a hardcoded name",
+            "description": "Plugin slug exactly as it appears in list_plugins (e.g. 'litespeed-cache') \u2014 validated against the site's live plugin list, never a hardcoded name",
             "title": "Plugin",
             "type": "string"
           },
@@ -3863,7 +3863,7 @@
     },
     {
       "name": "purge_cache",
-      "description": "Purge the site's page cache. Auto-detects an active cache plugin (currently LiteSpeed Cache via its litespeed-purge WP-CLI namespace) from the site's real, live plugin list — if none is found, reports that clearly instead of silently doing nothing.",
+      "description": "Purge the site's page cache. Auto-detects an active cache plugin (currently LiteSpeed Cache via its litespeed-purge WP-CLI namespace) from the site's real, live plugin list \u2014 if none is found, reports that clearly instead of silently doing nothing.",
       "action_type": "write",
       "chain_callable": true,
       "effects": [
@@ -3873,7 +3873,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -3992,7 +3992,7 @@
     },
     {
       "name": "run_wp_cli",
-      "description": "Run a WP-CLI command in a namespace not covered by the dedicated tools (manage_plugin, purge_cache) — e.g. WooCommerce (wc), a theme, transients, cron. namespace must be on the server-side allowlist; dangerous namespaces (eval, db, config, shell) are always rejected. Destructive subcommands (delete/remove/set-role/etc.) require an explicit confirm=true on a second call — the first call only previews what would run.",
+      "description": "Run a WP-CLI command in a namespace not covered by the dedicated tools (manage_plugin, purge_cache) \u2014 e.g. WooCommerce (wc), a theme, transients, cron. namespace must be on the server-side allowlist; dangerous namespaces (eval, db, config, shell) are always rejected. Destructive subcommands (delete/remove/set-role/etc.) require an explicit confirm=true on a second call \u2014 the first call only previews what would run.",
       "action_type": "write",
       "chain_callable": true,
       "effects": [
@@ -4002,17 +4002,17 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
           "namespace": {
-            "description": "WP-CLI command namespace, e.g. 'plugin', 'transient', 'litespeed-purge'. Must be on the server-side allowlist — arbitrary/unknown namespaces and dangerous ones (eval, db, config, shell) are always rejected.",
+            "description": "WP-CLI command namespace, e.g. 'plugin', 'transient', 'litespeed-purge'. Must be on the server-side allowlist \u2014 arbitrary/unknown namespaces and dangerous ones (eval, db, config, shell) are always rejected.",
             "title": "Namespace",
             "type": "string"
           },
           "args": {
-            "description": "Remaining WP-CLI arguments after the namespace, e.g. ['list', '--status=active']. Global flags like --path=/--url=/--ssh=/--allow-root are stripped automatically — never include them.",
+            "description": "Remaining WP-CLI arguments after the namespace, e.g. ['list', '--status=active']. Global flags like --path=/--url=/--ssh=/--allow-root are stripped automatically \u2014 never include them.",
             "items": {
               "type": "string"
             },
@@ -4140,7 +4140,7 @@
     },
     {
       "name": "manage_plugins",
-      "description": "Activate, deactivate, or update SEVERAL plugins at once on a connected WordPress site — the batch version of manage_plugin, for bulk updates. Every slug is validated against the site's live plugin list (call list_plugins first) — never guess a slug. 'deactivate' can break site functionality, so it requires an explicit confirm=true on a second call; the first call only previews the action.",
+      "description": "Activate, deactivate, or update SEVERAL plugins at once on a connected WordPress site \u2014 the batch version of manage_plugin, for bulk updates. Every slug is validated against the site's live plugin list (call list_plugins first) \u2014 never guess a slug. 'deactivate' can break site functionality, so it requires an explicit confirm=true on a second call; the first call only previews the action.",
       "action_type": "destructive",
       "chain_callable": true,
       "effects": [
@@ -4150,12 +4150,12 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from a previous list_sites call — never invent it",
+            "description": "Site id from a previous list_sites call \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
           "plugins": {
-            "description": "Plugin slugs exactly as they appear in list_plugins, e.g. ['litespeed-cache', 'wordfence'] — every slug is validated against the site's live plugin list, never guessed",
+            "description": "Plugin slugs exactly as they appear in list_plugins, e.g. ['litespeed-cache', 'wordfence'] \u2014 every slug is validated against the site's live plugin list, never guessed",
             "items": {
               "type": "string"
             },
@@ -4163,7 +4163,7 @@
             "type": "array"
           },
           "action": {
-            "description": "'activate', 'deactivate', or 'update' — applied to every plugin in the list",
+            "description": "'activate', 'deactivate', or 'update' \u2014 applied to every plugin in the list",
             "title": "Action",
             "type": "string"
           },
@@ -4183,7 +4183,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Result of one `wp plugin <action> <slug...>` covering several plugins.\n\nCarries the slug LIST and a single `output`, not per-plugin rows — because\nit really is one WP-CLI command over one SSH session, so there is one\noutcome to report. Inventing per-item rows here would imply a granularity\nthe execution does not have.",
+        "description": "Result of one `wp plugin <action> <slug...>` covering several plugins.\n\nCarries the slug LIST and a single `output`, not per-plugin rows \u2014 because\nit really is one WP-CLI command over one SSH session, so there is one\noutcome to report. Inventing per-item rows here would imply a granularity\nthe execution does not have.",
         "properties": {
           "id": {
             "anyOf": [
@@ -4304,7 +4304,7 @@
   "secrets": [
     {
       "name": "wp_encryption_key",
-      "description": "Fernet key used to encrypt WordPress Application Passwords and SSH credentials before they reach storage. Shared across all users; generate once with `Fernet.generate_key()` and set in Developer Portal → Secrets.",
+      "description": "Fernet key used to encrypt WordPress Application Passwords and SSH credentials before they reach storage. Shared across all users; generate once with `Fernet.generate_key()` and set in Developer Portal \u2192 Secrets.",
       "required": true,
       "write_mode": "user",
       "max_bytes": 256,

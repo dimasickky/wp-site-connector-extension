@@ -431,6 +431,20 @@ async def _render_detail(ctx, site_id,
         ssh_btn,
     ])
 
+    connection_alert = None
+    if not reachable:
+        connection_alert = ui.Stack([
+            ui.Alert(
+                title="Connection Lost",
+                message=f"Cannot reach WordPress site at {base_url}. The server may be unreachable, DNS/SSL failed, or credentials were changed.",
+                variant="error",
+            ),
+            ui.Button(
+                "Try again", icon="RefreshCw", variant="secondary", size="sm",
+                on_click=ui.Call("refresh_site", site_id=site_id),
+            ),
+        ], gap=1)
+
     # ── Zone 2: Server info (from record, no SSH call) ─
     server_section_children = []
     if has_ssh:
@@ -757,10 +771,14 @@ async def _render_detail(ctx, site_id,
     # ── Assemble page ─────────────────────────────────
     page_children = [
         health_row,
+    ]
+    if connection_alert:
+        page_children.append(connection_alert)
+    page_children.extend([
         *server_section_children,
         ui.Divider(label="Content"),
         group_nav,
         active_content,
-    ]
+    ])
 
     return ui.Page(title=name, subtitle=base_url, children=page_children)

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.12.0 — 2026-11-11 — Compact Metrics, Polished Cards & Connection Alerts
+
+### Added
+- **Compact Metrics Dashboard** (`panels.py`) — optimized layout for site health stats, PHP/WP versions, and active statuses.
+- **Connection Lost Alerts** (`panels.py`) — high-visibility alert banner when site is unreachable with a one-click "Try again" retry action.
+- **Polished Site Cards** (`panels.py`) — enhanced visual hierarchy and status badges for connected WordPress sites.
+
 ## v0.11.1 — 2026-11-10 — SDK 6.5.3 & Manifest category
 
 ### Changed
